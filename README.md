@@ -351,7 +351,6 @@ What's in v0.3 (now):
 
 What's coming next:
 
-- **Claude skill twin** — a `skills/skill-generator/SKILL.md` so Claude Code / Cowork can invoke the whole pipeline as a single instruction
 - **Multi-repo orchestration** — config-driven runs across 50+ enterprise repos in one pass
 - **Chunk-and-merge for very large domains** — Stage 3 currently truncates domains > 24KB of source; real chunk-merge needs implementation
 - **Real Java AST parsing** — optional `javalang` dependency to replace the regex parser for edge cases (Lombok, annotation processors)

@@ -2,8 +2,8 @@
 Single source of truth for every prompt the agent sends to Claude.
 
 These prompts are the load-bearing part of the agent. Both the Python CLI and
-the Claude skill (skills/skill-generator/SKILL.md, to be built) reference them,
-so changes here ripple to both delivery surfaces.
+the Claude skill (skills/skill-generator/SKILL.md) reference them, so changes
+here ripple to both delivery surfaces.
 
 Each prompt comes directly from the artifact-2 pipeline spec at
 https://claude.ai/public/artifacts/3467e791-5cf1-44bc-be5d-05119a2018c8
