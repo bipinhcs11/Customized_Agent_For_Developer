@@ -73,6 +73,8 @@ Each LLM-dependent stage has two halves: `*-emit` writes a prompt file, you past
 
 **Why this shape?** The Python tool is fully deterministic — file walking, parsing, source assembly, response application. The host AI agent does the reasoning. Nothing in this repo talks to the network; nothing requires an API key.
 
+For a visual sequence diagram of the IDE-side developer experience — from typing *"analyze this project"* through committed SKILL.md files — see [`docs/agent-invocation-flow.md`](./docs/agent-invocation-flow.md). It renders natively on GitHub.
+
 ---
 
 ## Quick start

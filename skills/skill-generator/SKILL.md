@@ -206,6 +206,7 @@ python3 -m tools.skill_generator.cli update-ingest --repo "$TARGET" --commit
 
 - Full pipeline spec: `AGENT.md` in this repo
 - Project-level Claude guidance: `CLAUDE.md`
+- Visual sequence diagram of the IDE-side developer flow: `docs/agent-invocation-flow.md`
 - Original problem statement and design rationale: `OPUS_PROMPT.md`
 - Prompt templates (single source of truth, used by both the Python CLI and this skill): `tools/skill_generator/prompts.py`
 - Reference SKILL.mds (quality bar): `skills/file-delivery/SKILL.md`, `skills/invoice-compare/SKILL.md`, `skills/payment-method-determination/SKILL.md`
