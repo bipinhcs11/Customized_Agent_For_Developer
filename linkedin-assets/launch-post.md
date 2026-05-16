@@ -28,11 +28,11 @@ The reason: every time you ask Copilot "how does the InvoiceComparison feature w
 I built a custom agent that fixes this:
 
 → Scans your Java repo ONCE — Spring Boot, Spring Batch, Struts, Quarkus, or legacy monoliths with stored procs + shell scripts
-→ Asks Claude to group classes into business features (1 AI call)
-→ Writes one SKILL.md per feature into .github/skills/ (1 AI call each)
-→ Links cross-feature dependencies (1 AI call)
+→ Groups classes into business features (host AI session does the reasoning — no API key, no separate billing)
+→ Writes one SKILL.md per feature into .github/skills/ (one paste-and-respond cycle per feature)
+→ Links cross-feature dependencies (one final paste-and-respond)
 
-For a 10-feature repo: ~12 AI calls upfront, then 1–2 calls per PR for incremental updates.
+For a 10-feature repo: ~12 host-agent turns upfront, then 1–2 turns per PR for incremental updates. All inside the Claude Code / Copilot Chat / Codex / Cowork session you already use.
 
 After that, Copilot reads the relevant SKILL.md BEFORE answering any feature question. It knows the status lifecycle, the DB schema, the saga participants, the exact ClassName.methodName() that owns each business rule. Right answer first try.
 
@@ -66,12 +66,14 @@ This is the comment LinkedIn will pin at the top. The repo link goes here.
 Code is here:
 github.com/bipinhcs11/Customized_Agent_For_Developer
 
-MIT licensed. Drop it on any Java repo:
+MIT licensed. Stdlib-only Python. No API keys. Drop it on any Java repo:
 
-  export ANTHROPIC_API_KEY=sk-ant-...
-  python3 -m tools.skill_generator.cli run-all /path/to/your/repo
+  python3 -m tools.skill_generator.cli crawl /path/to/repo --output .skill-gen/.index.json
+  python3 -m tools.skill_generator.cli plan-emit .skill-gen/.index.json
+  # paste the emitted prompt into your Claude Code / Copilot Chat / Codex session
+  # save the response and run plan-ingest, then generate-emit / -ingest, then link-emit / -ingest
 
-First run takes ~12 AI calls. Output lands in .github/skills/ — then your Copilot reads them automatically via the included .github/copilot-instructions.md.
+First run is ~12 host-agent turns. Output lands in .github/skills/ — then your Copilot reads them automatically via the included .github/copilot-instructions.md.
 
 Includes a full verification report against FTGO so you can see what the generated SKILL.mds actually look like before running it on your own code.
 ```

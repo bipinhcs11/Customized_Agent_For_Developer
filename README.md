@@ -3,7 +3,7 @@
 > **Turn any Java repo into AI-readable instruction files — once — so GitHub Copilot and Claude answer feature questions correctly the first time, every time, without burning your premium-request budget.**
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![Stage 1: zero AI calls](https://img.shields.io/badge/Stage_1-zero_AI_calls-green)]()
+[![Zero outbound API calls](https://img.shields.io/badge/network-zero_outbound-green)]()
 [![Verified on FTGO](https://img.shields.io/badge/verified-microservices.io%2Fftgo-brightgreen)](https://github.com/microservices-patterns/ftgo-application)
 
 ---
@@ -38,20 +38,18 @@ This repo contains **the agent that generates and maintains those skill files** 
 
 ## How it works
 
-The agent runs as a **four-stage pipeline** plus an incremental updater:
+The agent is **host-agent-driven**: the Python tool walks the repo, builds prompts, and parses responses — but it never makes outbound API calls. The LLM reasoning happens inside whatever AI session you already use (Claude Code, Codex, GitHub Copilot Chat, Claude Cowork), so it costs nothing beyond the subscription you already pay for.
+
+Each LLM-dependent stage has two halves: `*-emit` writes a prompt file, you paste it into your AI session, save the response, and `*-ingest` turns the response into the canonical artifact.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                        FIRST RUN (one-time)                          │
 │                                                                      │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐        │
-│  │ Stage 1  │    │ Stage 2  │    │ Stage 3  │    │ Stage 4  │        │
-│  │  Crawl   │ →  │   Plan   │ →  │ Generate │ →  │   Link   │        │
-│  └──────────┘    └──────────┘    └──────────┘    └──────────┘        │
-│  Zero AI calls   1 AI call       1 per domain    1 AI call           │
-│  walks repo      Claude groups   writes one      finds cross-        │
-│  locally         classes into    SKILL.md per    domain links        │
-│                  domains         domain                              │
+│  Stage 1: Crawl            (zero LLM turns — pure local parsing)     │
+│  Stage 2: Plan             (plan-emit  →  AI session  →  plan-ingest)│
+│  Stage 3: Generate         (generate-emit  →  AI session  →  ingest) │
+│  Stage 4: Link             (link-emit  →  AI session  →  link-ingest)│
 └──────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼
@@ -66,13 +64,14 @@ The agent runs as a **four-stage pipeline** plus an incremental updater:
 ┌──────────────────────────────────────────────────────────────────────┐
 │                  PHASE 2 — INCREMENTAL UPDATES                       │
 │                                                                      │
-│  On every PR merge:                                                  │
-│    git diff → map changed files to feature → re-run Stage 3 only     │
-│    for affected features → bump version → commit                     │
+│  On every PR merge or local change:                                  │
+│    git diff → map changed files to feature → update-emit             │
+│    → AI session generates updated SKILL.md → update-ingest           │
+│    → bump version → commit                                           │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-**Why this shape?** The expensive parts (file walking, parsing) are free. The AI calls are tightly scoped: one to identify domains, one per domain to write the skill, one to find cross-references. Steady-state cost after the first run is **1–2 AI calls per PR**.
+**Why this shape?** The Python tool is fully deterministic — file walking, parsing, source assembly, response application. The host AI agent does the reasoning. Nothing in this repo talks to the network; nothing requires an API key.
 
 ---
 
@@ -81,75 +80,69 @@ The agent runs as a **four-stage pipeline** plus an incremental updater:
 ### Prerequisites
 
 - Python 3.10+ (`python3 --version`)
-- An Anthropic API key (`ANTHROPIC_API_KEY`)
+- An AI session you already use — **any of**: Claude Code, GitHub Copilot Chat, Codex, Claude Cowork
 - The Java repo you want to document, checked out locally
 
-No third-party Python dependencies — the agent uses only the standard library.
+**No API keys. No third-party Python dependencies. No outbound network calls.**
 
 ### Install
 
 ```bash
 git clone https://github.com/bipinhcs11/Customized_Agent_For_Developer.git
 cd Customized_Agent_For_Developer
-export ANTHROPIC_API_KEY="sk-ant-..."
+# That's it.
 ```
 
-### Run end-to-end on your Java repo
+### Run the pipeline
+
+Each LLM stage is two commands with a paste in between. Stage 1 (Crawl) has no LLM step — it just walks the repo.
 
 ```bash
-# Replace /path/to/your/java/repo with your actual target
-python3 -m tools.skill_generator.cli run-all /path/to/your/java/repo
+TARGET=/path/to/your/java/repo
+
+# Stage 1 — fast, deterministic, no AI
+python3 -m tools.skill_generator.cli crawl "$TARGET" \
+    --output "$TARGET/.skill-gen/.index.json"
+
+# Stage 2 — Plan
+python3 -m tools.skill_generator.cli plan-emit "$TARGET/.skill-gen/.index.json"
+# Open .skill-gen/plan-prompt.md, paste it into your AI session.
+# Save the response as .skill-gen/plan-response.md.
+python3 -m tools.skill_generator.cli plan-ingest "$TARGET/.skill-gen/plan-response.md"
+
+# Stage 3 — Generate (one prompt per domain)
+python3 -m tools.skill_generator.cli generate-emit \
+    "$TARGET/.skill-gen/.plan.json" --repo "$TARGET"
+# For each .skill-gen/.generate-prompts/<domain>.md, paste into the AI session.
+# Save each response as .skill-gen/.generate-responses/<domain>.md.
+python3 -m tools.skill_generator.cli generate-ingest \
+    "$TARGET/.skill-gen/.plan.json" --repo "$TARGET"
+
+# Stage 4 — Link
+python3 -m tools.skill_generator.cli link-emit "$TARGET/.github/skills"
+# Paste link-prompt.md, save response as link-response.md.
+python3 -m tools.skill_generator.cli link-ingest \
+    "$TARGET/.skill-gen/link-response.md" --skills-dir "$TARGET/.github/skills"
 ```
 
-That command runs all four stages in order. The output lands in `<your-repo>/.github/skills/<domain-id>/SKILL.md`.
+The final SKILL.md files land in `<your-repo>/.github/skills/<domain-id>/SKILL.md`. Intermediate prompts and responses live under `<your-repo>/.skill-gen/`.
 
-### Or run stage-by-stage (recommended for the first run)
+### Why the emit/ingest dance?
+
+The whole point of the agent is to **stop spending premium-request budget**. Calling Anthropic from a Python script would mean adding *another* cost line that competes with your subscription. By emitting prompt files and ingesting responses, the LLM turns happen inside your existing Claude Code / Copilot / Codex session — no separate API spend, no separate key to manage.
+
+### Phase 2 — incremental updates
+
+After the first run commits the skills to your repo, refresh them when code changes:
 
 ```bash
-# Stage 1 — free, fast, deterministic
-python3 -m tools.skill_generator.cli crawl /path/to/repo --output index.json
-
-# Stage 2 — one AI call, review the plan before generating
-python3 -m tools.skill_generator.cli plan index.json --output plan.json
-
-# Stage 3 — generates one SKILL.md per domain (rate-limited, checkpointed)
-python3 -m tools.skill_generator.cli generate plan.json --repo /path/to/repo
-
-# Stage 4 — adds cross-domain relationships
-python3 -m tools.skill_generator.cli link /path/to/repo/.github/skills
+python3 -m tools.skill_generator.cli update-emit --repo .
+# Paste each .skill-gen/.update-prompts/<feature>.md into your AI session.
+# Save each response as .skill-gen/.update-responses/<feature>.md.
+python3 -m tools.skill_generator.cli update-ingest --repo . --commit
 ```
 
-### Dry-run mode (no API spend)
-
-Every AI-dependent subcommand supports `--dry-run`:
-
-```bash
-python3 -m tools.skill_generator.cli plan index.json --dry-run
-# Prints the prompt that would be sent; returns a placeholder response
-```
-
-### Phase 2 — automatic updates
-
-After your first run commits the skills to your repo, add this GitHub Action so skills auto-refresh on every PR merge:
-
-```yaml
-# .github/workflows/refresh-skills.yml
-name: Refresh Skills
-on:
-  push:
-    branches: [main]
-jobs:
-  refresh:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 2 }
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.10' }
-      - run: python3 -m tools.skill_generator.cli update --repo . --commit
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-```
+The same emit/ingest pattern; the same zero-API-call guarantee.
 
 ---
 
@@ -201,11 +194,11 @@ This agent was end-to-end verified against [microservices-patterns/ftgo-applicat
 | Microservice modules | 12 |
 | Domains identified by Stage 2 | 9 (one per microservice, mapped 1:1) |
 | Confidence (most domains) | HIGH |
-| AI calls total | ~11 (1 plan + 9 generate + 1 link) |
+| Host-agent turns total | ~11 (1 plan + 9 generate + 1 link) |
 | Schema conformance | 12/12 frontmatter fields, 12/12 body sections, 0 Java code blocks in body |
 | Warnings | 0 |
 
-Full details in [`verification-output/VERIFICATION_REPORT.md`](./verification-output/VERIFICATION_REPORT.md).
+Full details in [`verification-output/VERIFICATION_REPORT.md`](./verification-output/VERIFICATION_REPORT.md). The verification used an earlier API-call architecture; the prompts and outputs are unchanged — only the delivery mechanism (host agent vs. API) is different.
 
 ---
 
@@ -229,20 +222,20 @@ For legacy apps, the crawler also reads stored procedures (`.sql`), shell script
 
 ---
 
-## Token economics
+## Cost model
 
-The pipeline is designed to be **cheap to operate at enterprise scale**.
+The pipeline is **free to operate** — every LLM turn runs inside a session you already pay for.
 
-| Stage | AI calls per run | Why |
+| Stage | Host-agent turns | What happens |
 |---|---|---|
 | Crawl | 0 | Pure local parsing |
-| Plan | 1 | One call covers the whole repo |
-| Generate | 1 per detected domain | Each skill is one focused call |
-| Link | 1 | One call covers all cross-references |
-| **First run total** | **~12–15 calls for a 10-domain repo** | Roughly linear in domain count |
-| **Phase 2 update** | **1–2 calls per PR** | Only changed features re-generate |
+| Plan | 1 | One paste-and-respond cycle |
+| Generate | 1 per detected domain | Each skill is one focused turn |
+| Link | 1 | One turn covers all cross-references |
+| **First run total** | **~12–15 turns for a 10-domain repo** | Roughly linear in domain count |
+| **Phase 2 update** | **1–2 turns per PR** | Only changed features re-generate |
 
-Compare to the alternative: a developer asks 5 feature questions a day × 200 working days × 10 developers × ~3 premium calls per question due to context misses = **~30,000 premium requests/year per team** spent on context re-discovery. With skills in place, those same 5 questions a day land correctly on the first try.
+Compare to the alternative without skills: a developer asks 5 feature questions a day × 200 working days × 10 developers × ~3 premium calls per question due to context misses = **~30,000 premium requests/year per team** spent on context re-discovery. With skills in place, those same 5 questions a day land correctly on the first try — and the skills themselves cost zero subscription dollars to produce.
 
 ---
 
@@ -259,13 +252,12 @@ Compare to the alternative: a developer asks 5 feature questions a day × 200 wo
 │
 ├── tools/
 │   └── skill_generator/               ← THE AGENT (Python, stdlib only)
-│       ├── cli.py                     ← CLI entry point
-│       ├── crawler.py                 ← Stage 1 (zero AI calls)
-│       ├── claude_client.py           ← Stdlib HTTP client for Claude API
+│       ├── cli.py                     ← CLI entry point (emit/ingest subcommands)
+│       ├── crawler.py                 ← Stage 1 (zero LLM turns)
 │       ├── prompts.py                 ← All prompt strings (single source of truth)
-│       ├── plan.py                    ← Stage 2
-│       ├── generate.py                ← Stage 3 (rate-limited, checkpointed)
-│       ├── link.py                    ← Stage 4
+│       ├── plan.py                    ← Stage 2 (emit_prompt / ingest_response)
+│       ├── generate.py                ← Stage 3 (per-domain emit / ingest)
+│       ├── link.py                    ← Stage 4 (emit_prompt / ingest_response)
 │       ├── update.py                  ← Phase 2 incremental updater
 │       └── README.md                  ← Internal module docs
 │
@@ -324,13 +316,15 @@ The agent's defaults work for most repos. Override via CLI flags:
 
 | Flag | Default | What it does |
 |---|---|---|
-| `--model` | `claude-sonnet-4-20250514` | Pin a specific Claude model |
-| `--output-dir` | `<repo>/.github/skills/` | Where SKILL.mds land |
+| `--output` / `-o` | varies by subcommand | Where to write the prompt / artifact |
+| `--output-dir` | `<repo>/.github/skills/` | Where SKILL.mds land (generate-ingest) |
+| `--prompts-dir` | `<repo>/.skill-gen/.generate-prompts/` | Where per-domain emit prompts land |
+| `--responses-dir` | `<repo>/.skill-gen/.generate-responses/` | Where to look for per-domain responses |
 | `--exclude` | (see `crawler.py`) | Additional directories to skip in crawl |
 | `--skip-tests` | off | Exclude `*Test.java` and `/test/` paths |
-| `--force` | off | Regenerate even if SKILL.md exists |
-| `--only DOMAIN_ID` | (all) | Generate just one domain |
-| `--dry-run` | off | Print the prompt; don't call the API |
+| `--force` | off | Overwrite an existing SKILL.md on ingest |
+| `--only DOMAIN_ID` | (all) | Restrict emit/ingest to one domain |
+| `--commit` | off | (update-ingest) git-add + commit the refreshed SKILL.mds |
 
 ---
 
@@ -346,19 +340,20 @@ So nobody starts with the wrong expectation:
 
 ## Roadmap
 
-What's in v0.2 (now):
+What's in v0.3 (now):
 
-- All four pipeline stages working end-to-end
+- All four pipeline stages working end-to-end via emit/ingest
 - Phase 2 incremental updater (git-diff-based)
 - Crawler handles Java + XML + properties + YAML + SQL + shell
-- Python CLI with `crawl / plan / generate / link / update / run-all`
-- Verified against FTGO microservices reference
+- Python CLI with `crawl / plan-emit / plan-ingest / generate-emit / generate-ingest / link-emit / link-ingest / update-emit / update-ingest`
+- **Zero outbound network calls; no API key required**
+- Verified end-to-end against FTGO microservices reference (under earlier API architecture; prompts unchanged)
 
 What's coming next:
 
-- **Multi-repo orchestration** — `skill-gen generate-all --config agent-config.yml` across 50+ enterprise repos in one pass
+- **Claude skill twin** — a `skills/skill-generator/SKILL.md` so Claude Code / Cowork can invoke the whole pipeline as a single instruction
+- **Multi-repo orchestration** — config-driven runs across 50+ enterprise repos in one pass
 - **Chunk-and-merge for very large domains** — Stage 3 currently truncates domains > 24KB of source; real chunk-merge needs implementation
-- **Claude skill twin** — a markdown skill at `skills/skill-generator/SKILL.md` that lets Claude in Cowork or Copilot Chat execute the same pipeline without the Python CLI (for developers who can't install Python locally)
 - **Real Java AST parsing** — optional `javalang` dependency to replace the regex parser for edge cases (Lombok, annotation processors)
 - **Web UI for plan review** — instead of editing `plan.json` by hand, click-to-approve domains in a browser before Stage 3 runs
 
@@ -366,8 +361,8 @@ What's coming next:
 
 ## FAQ
 
-**Does this require a paid Claude account?**
-Yes — you need an `ANTHROPIC_API_KEY`. Stage 1 (crawl) runs without one; Stages 2–4 are AI calls. For a typical 10-domain repo the first run costs a few dollars; incremental updates are pennies per PR.
+**Does this require an Anthropic API key?**
+No. The tool never makes outbound network calls. Every LLM turn happens inside an AI session you already use (Claude Code, GitHub Copilot Chat, Codex, Claude Cowork). The cost to operate the agent is your normal subscription — nothing extra.
 
 **Will this work on my legacy monolith with stored procedures and shell scripts?**
 Yes — the crawler reads `.sql`, `.sh`, Flyway/Liquibase migrations, and Spring Batch job XML alongside Java. The generated SKILL.md describes whatever the target repo actually uses.
@@ -379,7 +374,7 @@ No. The agent emits SKILL.md instruction files. Java code generation tools can *
 The crawler is regex-based, which is fast and dependency-free but has edge cases (Lombok-generated code, exotic generics). For most repos it works fine. If accuracy matters more than speed, a future version will use `javalang` for full AST parsing.
 
 **How do I review the plan before Stage 3 runs?**
-Run stage-by-stage. After `skill-gen plan`, open `plan.json`, edit the `domains[]` array (remove domains you don't want, rename ids, merge domains), then run `skill-gen generate plan.json --repo .`. Or use `run-all` and trust the planner — it's been right on every test repo so far.
+You always do — the emit/ingest split makes plan review the default. After `plan-ingest` writes `plan.json`, edit the `domains[]` array (remove domains you don't want, rename ids, merge domains) before running `generate-emit`. No way to skip review even if you wanted to.
 
 **What if my repo has 5000 classes?**
 The Plan stage's prompt scales with index size. At ~5000 classes the index is ~500KB — still within Claude's context window but worth chunking. Workaround for now: run the crawler on subdirectories separately and merge plans manually. Multi-pass planning is on the roadmap.

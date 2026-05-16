@@ -10,13 +10,16 @@ A customizable AI agent that reads any Java repository — Spring Boot, Spring M
 
 The repo also contains the Phase-2 updater that keeps generated skills current as code evolves.
 
+**Execution model.** The Python tool is host-agent-driven and makes zero outbound API calls. Every LLM-dependent stage emits a prompt file; the developer pastes it into their existing AI session (Claude Code, Codex, Copilot Chat, Cowork); the response is saved to disk; the tool ingests it. No `ANTHROPIC_API_KEY`, no separate billing.
+
 **Read `AGENT.md` first** for the full pipeline specification before doing any work in this repo. Read `OPUS_PROMPT.md` for the original problem statement and rationale.
 
 ---
 
 ## What Claude should always do
 
-- **Read `AGENT.md` first** — it defines the four-stage pipeline (Crawl → Plan → Generate → Link), the Phase-2 updater triggers, the SKILL.md standard, and the supported Java flavors.
+- **Read `AGENT.md` first** — it defines the four-stage pipeline (Crawl → Plan → Generate → Link), the emit/ingest contract for each stage, the Phase-2 updater triggers, the SKILL.md standard, and the supported Java flavors.
+- **Never add HTTP/API client code to this repo.** If a stage needs an LLM turn, it emits a prompt file and ingests a saved response. The `tools/skill_generator/` package is stdlib-only on purpose; new third-party deps or `urllib.request` POSTs to LLM endpoints break the core promise.
 - **Read the artifact-3 SKILL.md standard** before generating or editing any SKILL.md: https://claude.ai/public/artifacts/1689b220-c09f-467c-a8af-1eb3bb1a30fe
 - **Read the relevant reference skill** when doing feature-specific work: `skills/<feature>/SKILL.md`.
 - **Treat the three reference skills as the quality bar** — generated skills must match their format and depth exactly.

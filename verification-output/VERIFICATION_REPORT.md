@@ -1,5 +1,7 @@
 # Verification Report — FeatureBased Skill Generator Agent v0.2
 
+> **Historical run.** This verification was executed against the **v0.2 architecture**, which made direct Anthropic API calls. The pipeline shape (Crawl → Plan → Generate → Link), the prompts, and the resulting SKILL.md files are **identical** under the current host-agent-driven architecture (v0.3+); only the delivery mechanism changed (host AI session vs. API). The output artifacts in this folder are still representative of what the current pipeline produces. A re-run under v0.3 is on the roadmap.
+
 **Date:** 2026-05-15
 **Target repo:** `github.com/microservices-patterns/ftgo-application` (Chris Richardson's Food-to-Go saga-pattern microservices reference, ~358 Java classes across 12 microservice modules, Spring Boot 2.x, Gradle, Java 8).
 

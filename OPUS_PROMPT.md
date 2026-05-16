@@ -1,5 +1,7 @@
 # FeatureBased Skill Generator Agent — Full Context Prompt for Claude Opus
 
+> **Historical document.** This is the original problem statement that bootstrapped the project. The first implementation assumed direct Anthropic API calls; the current implementation (v0.3+) is **host-agent-driven** — every LLM-dependent stage emits a prompt file and ingests a saved response, so no API key or outbound network call is required. The pipeline shape, four-stage decomposition, and SKILL.md standard described below are unchanged.
+
 ---
 
 ## Who You Are

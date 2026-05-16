@@ -1,46 +1,67 @@
 # skill-generator (Python CLI)
 
-This is the Python implementation of the FeatureBased Skill Generator Agent. It is one of two equivalent delivery forms; the other is the Claude skill at `skills/skill-generator/` (to be built). Both share the same prompt strings and produce identical output.
+This is the Python implementation of the FeatureBased Skill Generator Agent. It is **host-agent-driven** and **stdlib-only**: every LLM-dependent stage emits a prompt file that the developer pastes into their existing AI session (Claude Code, Codex, GitHub Copilot Chat, Claude Cowork), and ingests the saved response. The tool never makes outbound network calls and never needs an API key.
 
-Currently implemented: **Stage 1 — Crawl** (the zero-AI-call deterministic indexer). Stages 2–4 and the Phase-2 updater are stubbed and report "not implemented".
+The other delivery form, a Claude skill at `skills/skill-generator/`, is planned and shares the same prompt strings.
 
 ## Requirements
 
-Python 3.10+ (standard library only — no third-party dependencies). The crawler uses `re`, `json`, `xml.etree.ElementTree`, `pathlib`, `dataclasses`, and `argparse`.
+Python 3.10+ (standard library only — no third-party dependencies). Modules used: `re`, `json`, `xml.etree.ElementTree`, `pathlib`, `dataclasses`, `subprocess`, `argparse`.
 
-## Quick start
+## Subcommand map
 
-Crawl a Java repo and print the index to stdout:
+| Subcommand | What it does |
+|---|---|
+| `crawl` | Stage 1 — walk repo, write index JSON. Zero LLM turns. |
+| `plan-emit` | Stage 2 — build the planning prompt for the host agent. |
+| `plan-ingest` | Stage 2 — parse the host agent's response into `plan.json`. |
+| `generate-emit` | Stage 3 — write one prompt per domain (full source bundled in). |
+| `generate-ingest` | Stage 3 — read each response, write `<domain-id>/SKILL.md`. |
+| `link-emit` | Stage 4 — write the cross-domain link prompt. |
+| `link-ingest` | Stage 4 — apply links to each SKILL.md's frontmatter + body. |
+| `update-emit` | Phase 2 — write update prompts for features affected by `git diff`. |
+| `update-ingest` | Phase 2 — apply per-feature responses; bump version; optionally commit. |
 
+## End-to-end run (with paste steps in between)
+
+```bash
+TARGET=/path/to/your/java/repo
+
+python3 -m tools.skill_generator.cli crawl "$TARGET" \
+    --output "$TARGET/.skill-gen/.index.json"
+
+python3 -m tools.skill_generator.cli plan-emit \
+    "$TARGET/.skill-gen/.index.json"
+# Paste .skill-gen/plan-prompt.md into your AI session.
+# Save the response as .skill-gen/plan-response.md.
+python3 -m tools.skill_generator.cli plan-ingest \
+    "$TARGET/.skill-gen/plan-response.md"
+
+python3 -m tools.skill_generator.cli generate-emit \
+    "$TARGET/.skill-gen/.plan.json" --repo "$TARGET"
+# For each .skill-gen/.generate-prompts/<domain>.md, paste into AI session.
+# Save responses to .skill-gen/.generate-responses/<domain>.md
+python3 -m tools.skill_generator.cli generate-ingest \
+    "$TARGET/.skill-gen/.plan.json" --repo "$TARGET"
+
+python3 -m tools.skill_generator.cli link-emit \
+    "$TARGET/.github/skills"
+# Paste .skill-gen/link-prompt.md, save response as .skill-gen/link-response.md.
+python3 -m tools.skill_generator.cli link-ingest \
+    "$TARGET/.skill-gen/link-response.md" \
+    --skills-dir "$TARGET/.github/skills"
 ```
-python3 -m tools.skill_generator.cli crawl /path/to/java/repo
-```
 
-Write to a file and feed it to `jq`:
+## Crawl details
 
-```
-python3 -m tools.skill_generator.cli crawl /path/to/repo --output /tmp/index.json
-jq '.stats' /tmp/index.json
-jq '.java_classes[] | {package, class_name, type}' /tmp/index.json
-```
-
-Compose with shell pipes for quick triage:
-
-```
-python3 -m tools.skill_generator.cli crawl . --compact \
-  | jq '.java_classes[] | select(.flags[] == "god_class") | .class_name'
-```
-
-Useful flags on the `crawl` subcommand:
+Stage 1 is fully deterministic. Useful flags:
 
 - `--output FILE` — write JSON to a file instead of stdout
 - `--exclude DIR` — add a directory name to the skip list (repeatable)
-- `--skip-tests` — exclude test files entirely (default behaviour: include but flag them with `flags: ["test"]`)
+- `--skip-tests` — exclude test files entirely (default: include but flag them with `flags: ["test"]`)
 - `--compact` — single-line JSON
 
-Stub subcommands that report "not implemented" so the surface is locked in for later phases: `plan`, `generate`, `link`, `update`, `generate-all`.
-
-## What Stage 1 reads
+### What Stage 1 reads
 
 | File type | What it extracts |
 |---|---|
@@ -54,93 +75,67 @@ Stub subcommands that report "not implemented" so the surface is locked in for l
 | Quartz XML | job class → cron expression |
 | `*.properties` | top-level + 2-level key prefixes |
 | `*.yml` / `*.yaml` | top-level + 2-level key prefixes |
+| `*.sql` | stored procedure / table signals |
+| `*.sh` | callers of Java/Spring/batch programs |
 
 It also infers `framework` (Spring Boot, Spring MVC, Struts, Quarkus, Raw Servlet, Spring MVC (legacy), Unknown), `build_system` (Maven, Gradle, Ant), `java_version` (from pom.xml or build.gradle), and `project_type` (REST API, Batch Job, Scheduled, Hybrid, Monolith Module).
 
-## What Stage 1 skips
+### What Stage 1 skips
 
-Silently skipped: `target/`, `build/`, `.git/`, `generated/`, `.mvn/`, `node_modules/`, `.idea/`, `.vscode/`, `.gradle/`, `out/`, `bin/`, `dist/`, `.settings/`. Binary extensions are not opened: `.class`, `.jar`, `.war`, `.ear`, `.zip`, `.tar`, `.gz`, `.so`, `.dylib`, `.dll`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.pdf`, `.ico`, `.keystore`, `.jks`, `.woff`, `.woff2`, `.ttf`. Files with `// DO NOT EDIT`, `@Generated`, or `// generated by` markers in the first 2KB are skipped. Files shorter than 10 characters are skipped.
+Silently skipped: `target/`, `build/`, `.git/`, `generated/`, `.mvn/`, `node_modules/`, `.idea/`, `.vscode/`, `.gradle/`, `out/`, `bin/`, `dist/`, `.settings/`. Binary extensions are not opened: `.class`, `.jar`, `.war`, `.ear`, `.zip`, `.tar`, `.gz`, `.so`, `.dylib`, `.dll`, image and font extensions. Files with `// DO NOT EDIT`, `@Generated`, or `// generated by` markers in the first 2KB are skipped. Files shorter than 10 characters are skipped.
 
 ## Output schema (top-level)
 
 ```jsonc
 {
   "schema_version": 1,
-  "scan": { "root": "...", "timestamp": "ISO-8601", "tool_version": "0.1.0" },
+  "scan": { "root": "...", "timestamp": "ISO-8601", "tool_version": "0.3.0" },
   "stats": {
-    "java_classes": 23,
-    "xml_files": 0,
-    "config_files": 0,
-    "skipped_files": 29,
-    "total_java_loc": 2696,
-    "framework": "Spring MVC",
-    "build_system": "Unknown",
-    "java_version": "Unknown",
-    "project_type": "REST API"
+    "java_classes": 23, "xml_files": 0, "config_files": 0,
+    "skipped_files": 29, "total_java_loc": 2696,
+    "framework": "Spring MVC", "build_system": "Unknown",
+    "java_version": "Unknown", "project_type": "REST API"
   },
   "warnings": [],
-  "java_classes": [ /* JavaClass[] */ ],
-  "xml_signals":  [ /* XmlSignal[] */ ],
-  "config_signals": [ /* ConfigSignal[] */ ]
+  "java_classes": [ /* ... */ ],
+  "xml_signals":  [ /* ... */ ],
+  "config_signals": [ /* ... */ ],
+  "sql_signals": [ /* ... */ ],
+  "shell_signals": [ /* ... */ ]
 }
 ```
 
-A `JavaClass` entry:
+## Default file layout (relative to a target repo)
 
-```jsonc
-{
-  "file_path": "FileDeliveryController.java",
-  "package": "com.company.app.filedelivery.controller",
-  "class_name": "FileDeliveryController",
-  "type": "class",
-  "annotations": ["RestController", "RequestMapping", "Validated"],
-  "method_names": ["upload", "getById", "download", "..."],
-  "extends": null,
-  "implements": [],
-  "import_tail_tokens": ["..."],
-  "line_count": 95,
-  "flags": []
-}
 ```
-
-An `XmlSignal` entry:
-
-```jsonc
-{
-  "file_path": "src/main/resources/struts-config.xml",
-  "xml_type": "struts_config",
-  "signals": [
-    { "kind": "struts_action", "path": "/login", "class": "com.acme.LoginAction" }
-  ]
-}
+<repo>/
+├── .skill-gen/                              ← intermediates
+│   ├── .index.json                          ← from crawl
+│   ├── plan-prompt.md                       ← emit (Stage 2)
+│   ├── plan-response.md                     ← developer fills
+│   ├── .plan.json                           ← ingest
+│   ├── .generate-prompts/<domain-id>.md     ← emit (Stage 3)
+│   ├── .generate-responses/<domain-id>.md   ← developer fills
+│   ├── link-prompt.md                       ← emit (Stage 4)
+│   ├── link-response.md                     ← developer fills
+│   ├── .update-prompts/<feature-id>.md      ← emit (Phase 2)
+│   └── .update-responses/<feature-id>.md    ← developer fills
+└── .github/
+    └── skills/<domain-id>/SKILL.md          ← final output
 ```
-
-A `ConfigSignal` entry:
-
-```jsonc
-{
-  "file_path": "src/main/resources/application.yml",
-  "config_type": "yaml",
-  "key_prefixes": ["spring", "spring.datasource", "app", "app.file-delivery"]
-}
-```
-
-## Where Stage 2 picks up
-
-Stage 2 (Plan) takes this JSON, sends it to Claude with the grouping rules (see `AGENT.md` and https://claude.ai/public/artifacts/3467e791-5cf1-44bc-be5d-05119a2018c8), and gets back a `domains[]` array. The developer reviews the plan, toggles domains, and approves; then Stage 3 (Generate) writes one `SKILL.md` per approved domain.
 
 ## Self-test against this repo
 
 Run the crawler against the three reference example folders and confirm sensible output:
 
-```
+```bash
 for d in examples/file-delivery examples/invoice-compare examples/payment-method-determination; do
   echo "=== $d ==="
   python3 -m tools.skill_generator.cli crawl "$d" --compact | jq '{stats, warnings}'
 done
 ```
 
-Expected: ~7–9 Java classes per folder, framework `Spring MVC`, project_type `REST API`, zero warnings. Method names and annotations should match what you see in the Java source.
+Expected: ~7–9 Java classes per folder, framework `Spring MVC` (or `Spring Boot` depending on annotations), zero warnings.
 
 ## Limitations
 
@@ -150,9 +145,10 @@ The Java parser is regex-based, not AST-based. It is fast and dependency-free bu
 - Generic parameters in `extends` / `implements` are stripped: `JpaRepository<Foo, Long>` becomes `JpaRepository`. Downstream stages don't need the type parameters.
 - Methods inside anonymous inner classes may or may not be picked up depending on bracket nesting — they're not a primary signal anyway.
 - Java 14+ records and Java 17 sealed classes are recognised; pattern-matched switch expressions are not parsed.
+- Domains whose collected source exceeds 24KB are truncated with a marker; chunk-and-merge across multiple host-agent turns is roadmap.
 
 If a project requires AST-level accuracy, the Python `javalang` library can be dropped in as an optional dependency in a future version. For Stage 1's purpose (give Stage 2 enough signal to group classes into domains), regex is sufficient and zero-dependency.
 
 ## Tool version & schema version
 
-The current tool version is `0.1.0`. The output JSON schema version is `1`. If the schema changes in a backwards-incompatible way (renamed fields, removed sections), `schema_version` will increment so downstream consumers can branch on it.
+The current tool version is `0.3.0` (host-agent-driven). The output JSON schema version is `1`. If the schema changes in a backwards-incompatible way (renamed fields, removed sections), `schema_version` will increment so downstream consumers can branch on it.
