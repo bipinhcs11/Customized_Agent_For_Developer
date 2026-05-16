@@ -1,12 +1,21 @@
 """
-Stage 2 — Plan. One AI call.
+Stage 2 — Plan. Host-agent execution (no API calls).
 
-Takes a CrawlIndex JSON file (output of Stage 1) and sends it to Claude with the
-grouping rules. Parses the JSON response into a plan structure. Writes the plan
-to <output_dir>/.plan.json for human review before Stage 3 runs.
+Two operations:
+  emit_prompt(index_path, prompt_path)
+      Read crawl-index JSON, assemble the Stage-2 prompt, write it to a file.
+      The developer pastes this prompt into their host agent session
+      (Claude Code, Codex, Copilot Chat, Cowork) and saves the response.
+
+  ingest_response(response_path, plan_path)
+      Read the host agent's response (JSON, optionally fenced), parse it,
+      validate the shape, and write the canonical plan.json.
 
 Usage (from CLI):
-    skill-gen plan <index.json> --output .github/skills/.plan.json
+    skill-gen plan-emit <index.json> --output .skill-gen/plan-prompt.md
+    # developer feeds .skill-gen/plan-prompt.md to their AI session,
+    # saves the response as .skill-gen/plan-response.md
+    skill-gen plan-ingest <response.md> --output .skill-gen/plan.json
 """
 from __future__ import annotations
 
@@ -16,8 +25,11 @@ import sys
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
 
-from .claude_client import ClaudeClient, ClaudeAPIError
 from .prompts import STAGE_2_PLAN_PROMPT
+
+
+class PlanParseError(RuntimeError):
+    pass
 
 
 @dataclass
@@ -51,7 +63,7 @@ def _slim_index_for_planning(index: dict) -> dict:
     """The Plan stage doesn't need full method names or import lists — those are
     Stage 3 inputs. Strip the index down to package + class + annotations +
     flags to keep the prompt small."""
-    slim = {
+    return {
         "scan": index.get("scan", {}),
         "stats": index.get("stats", {}),
         "java_classes": [
@@ -80,28 +92,26 @@ def _slim_index_for_planning(index: dict) -> dict:
         "sql_signals": index.get("sql_signals", []),
         "shell_signals": index.get("shell_signals", []),
     }
-    return slim
 
 
-def run(index_path: str | Path, output_path: str | Path | None = None,
-        *, dry_run: bool = False, model: str | None = None) -> Plan:
-    """Run Stage 2. Returns the parsed Plan. If output_path is given, also
-    writes the raw JSON to disk so a human can review it."""
+def emit_prompt(index_path: str | Path, prompt_path: str | Path) -> Path:
+    """Assemble the Stage-2 prompt and write it to prompt_path."""
     index = json.loads(Path(index_path).read_text(encoding="utf-8"))
     slim = _slim_index_for_planning(index)
     prompt = STAGE_2_PLAN_PROMPT.replace("{INDEX_JSON}", json.dumps(slim, indent=2))
+    prompt_path = Path(prompt_path)
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text(prompt, encoding="utf-8")
+    print(f"[plan-emit] wrote prompt to {prompt_path} ({len(prompt)} chars)",
+          file=sys.stderr)
+    return prompt_path
 
-    client_kwargs = {"dry_run": dry_run}
-    if model:
-        client_kwargs["model"] = model
-    client = ClaudeClient(**client_kwargs)
 
-    print(f"[plan] sending {len(prompt)} chars to Claude...", file=sys.stderr)
-    raw = client.complete(prompt, max_tokens=8192)
-    print(f"[plan] received {len(raw)} chars", file=sys.stderr)
-
+def ingest_response(response_path: str | Path,
+                    plan_path: str | Path | None = None) -> Plan:
+    """Parse a host-agent response into a Plan. Optionally persist to plan_path."""
+    raw = Path(response_path).read_text(encoding="utf-8")
     plan_dict = _parse_plan_json(raw)
-
     plan = Plan(
         projectType=plan_dict.get("projectType", "Unknown"),
         framework=plan_dict.get("framework", "Unknown"),
@@ -127,33 +137,29 @@ def run(index_path: str | Path, output_path: str | Path | None = None,
             for d in plan_dict.get("domains", [])
         ],
     )
-
-    if output_path:
-        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(output_path).write_text(json.dumps(asdict(plan), indent=2), encoding="utf-8")
-        print(f"[plan] wrote {output_path} ({len(plan.domains)} domains)", file=sys.stderr)
-
+    if plan_path:
+        plan_path = Path(plan_path)
+        plan_path.parent.mkdir(parents=True, exist_ok=True)
+        plan_path.write_text(json.dumps(asdict(plan), indent=2), encoding="utf-8")
+        print(f"[plan-ingest] wrote {plan_path} ({len(plan.domains)} domains)",
+              file=sys.stderr)
     return plan
 
 
 def _parse_plan_json(raw: str) -> dict:
-    """Tolerant JSON parser — Claude sometimes wraps JSON in code fences even
-    when instructed otherwise."""
+    """Tolerant JSON parser — host agents sometimes wrap JSON in code fences."""
     raw = raw.strip()
-    # Strip a leading ```json or ``` fence if present
     if raw.startswith("```"):
-        # Drop the first line and the trailing fence
         lines = raw.splitlines()
         if lines[0].startswith("```"):
             lines = lines[1:]
         if lines and lines[-1].startswith("```"):
             lines = lines[:-1]
         raw = "\n".join(lines)
-    # Find the outermost JSON object
     match = re.search(r"\{.*\}", raw, re.DOTALL)
     if not match:
-        raise ClaudeAPIError(f"No JSON object found in response: {raw[:500]}")
+        raise PlanParseError(f"No JSON object found in response: {raw[:500]}")
     try:
         return json.loads(match.group(0))
     except json.JSONDecodeError as e:
-        raise ClaudeAPIError(f"Plan response was not valid JSON: {e}\n\n{raw[:1000]}")
+        raise PlanParseError(f"Plan response was not valid JSON: {e}\n\n{raw[:1000]}")
