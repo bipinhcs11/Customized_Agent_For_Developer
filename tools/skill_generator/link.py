@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from .prompts import STAGE_4_LINK_PROMPT
+from .validate import validate
 
 
 class LinkParseError(RuntimeError):
@@ -45,8 +46,13 @@ def emit_prompt(skills_dir: str | Path, prompt_path: str | Path) -> Path:
 
 
 def ingest_response(response_path: str | Path,
-                    skills_dir: str | Path) -> dict:
+                    skills_dir: str | Path,
+                    *, validate_schema: bool = True) -> dict:
     """Parse the host agent's response and update each affected SKILL.md.
+
+    With validate_schema=True, the rewritten SKILL.md is verified against the
+    artifact-3 contract before being written; a rewrite that would break the
+    contract is rejected and not persisted.
 
     Returns {"links": [...], "updated": [paths]}."""
     skills_dir = Path(skills_dir)
@@ -54,14 +60,26 @@ def ingest_response(response_path: str | Path,
     links = _parse_links_json(raw).get("links", [])
     print(f"[link-ingest] found {len(links)} cross-domain link(s)", file=sys.stderr)
 
-    by_from: dict = {}
+    # Group by BOTH sides so each link updates both the `from` and `to` SKILL.md.
+    # The reverse direction gets the same reason; the relationship type is
+    # inverted ("calls" → "called-by", "extends" → "extended-by", etc.).
+    by_skill: dict = {}
     for ln in links:
         if not isinstance(ln, dict) or "from" not in ln or "to" not in ln:
             continue
-        by_from.setdefault(ln["from"], []).append(ln)
+        by_skill.setdefault(ln["from"], []).append({
+            "to": ln["to"],
+            "type": ln.get("type", "calls"),
+            "reason": ln.get("reason", ""),
+        })
+        by_skill.setdefault(ln["to"], []).append({
+            "to": ln["from"],
+            "type": _invert_link_type(ln.get("type", "calls")),
+            "reason": ln.get("reason", ""),
+        })
 
     updated: list = []
-    for domain_id, domain_links in by_from.items():
+    for domain_id, domain_links in by_skill.items():
         skill_path = skills_dir / domain_id / "SKILL.md"
         if not skill_path.exists():
             print(f"[link-ingest] {domain_id}: SKILL.md not found, skipping",
@@ -69,13 +87,31 @@ def ingest_response(response_path: str | Path,
             continue
         text = skill_path.read_text(encoding="utf-8")
         new_text = _apply_links(text, domain_links)
-        if new_text != text:
-            skill_path.write_text(new_text, encoding="utf-8")
-            updated.append(str(skill_path))
-            print(f"[link-ingest] {domain_id}: appended {len(domain_links)} link(s)",
-                  file=sys.stderr)
+        if new_text == text:
+            continue
+        if validate_schema:
+            vres = validate(new_text, path=str(skill_path))
+            if not vres.ok:
+                print(f"[link-ingest] {domain_id}: link rewrite would BREAK schema, "
+                      f"NOT writing:", file=sys.stderr)
+                for e in vres.errors:
+                    print(f"  ERROR: {e}", file=sys.stderr)
+                continue
+        skill_path.write_text(new_text, encoding="utf-8")
+        updated.append(str(skill_path))
+        print(f"[link-ingest] {domain_id}: appended {len(domain_links)} link(s)",
+              file=sys.stderr)
 
     return {"links": links, "updated": updated}
+
+
+def _invert_link_type(t: str) -> str:
+    return {
+        "calls": "called-by",
+        "shares": "shares",
+        "extends": "extended-by",
+        "configures": "configured-by",
+    }.get(t, t)
 
 
 def _apply_links(text: str, links: list) -> str:
