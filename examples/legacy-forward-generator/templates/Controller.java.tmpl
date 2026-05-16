@@ -1,0 +1,72 @@
+package com.company.{{module}}.{{featureLower}}.controller;
+
+import com.company.{{module}}.{{featureLower}}.model.dto.{{Feature}}Request;
+import com.company.{{module}}.{{featureLower}}.model.dto.{{Feature}}Response;
+import com.company.{{module}}.{{featureLower}}.service.{{Feature}}Service;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+/**
+ * REST controller for {{Feature}} operations.
+ * Handles HTTP request/response lifecycle and delegates business logic to {@link {{Feature}}Service}.
+ */
+@RestController
+@RequestMapping("/api/v1/{{feature-kebab}}")
+@Validated
+public class {{Feature}}Controller {
+
+    private final {{Feature}}Service service;
+
+    public {{Feature}}Controller({{Feature}}Service service) {
+        this.service = service;
+    }
+
+    /**
+     * Create a new {{Feature}}.
+     */
+    @PostMapping
+    public ResponseEntity<{{Feature}}Response> create(
+            @Valid @RequestBody {{Feature}}Request request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.create(request));
+    }
+
+    /**
+     * Retrieve a {{Feature}} by its ID.
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<{{Feature}}Response> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(service.getById(id));
+    }
+
+    /**
+     * Retrieve all active {{Feature}} records.
+     */
+    @GetMapping
+    public ResponseEntity<List<{{Feature}}Response>> getAll() {
+        return ResponseEntity.ok(service.getAll());
+    }
+
+    /**
+     * Update an existing {{Feature}}.
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<{{Feature}}Response> update(
+            @PathVariable Long id,
+            @Valid @RequestBody {{Feature}}Request request) {
+        return ResponseEntity.ok(service.update(id, request));
+    }
+
+    /**
+     * Soft-delete a {{Feature}} by ID.
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+}

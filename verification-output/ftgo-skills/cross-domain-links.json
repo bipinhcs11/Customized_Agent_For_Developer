@@ -1,0 +1,16 @@
+{
+  "links": [
+    {
+      "from": "consumer-management",
+      "to": "accounting-authorization",
+      "reason": "ConsumerService.create() publishes ConsumerCreated event which triggers AccountService.create() to provision the consumer's account in the accounting-authorization domain.",
+      "type": "calls"
+    },
+    {
+      "from": "accounting-authorization",
+      "to": "consumer-management",
+      "reason": "AccountingServiceCommandHandler.authorize() / reverseAuthorization() are invoked as saga steps following ConsumerService.validateOrderForConsumer() to authorize payment against the consumer account established at consumer registration.",
+      "type": "calls"
+    }
+  ]
+}

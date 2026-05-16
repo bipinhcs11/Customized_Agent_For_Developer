@@ -1,0 +1,51 @@
+package com.company.{{module}}.{{featureLower}}.dao;
+
+import com.company.{{module}}.{{featureLower}}.model.entity.{{Feature}}Entity;
+
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * Data-access contract for {{Feature}}.
+ * Implementations may use JPA, JDBC, or any other persistence mechanism.
+ */
+public interface {{Feature}}Dao {
+
+    /**
+     * Persists a new or updated {{Feature}} entity.
+     *
+     * @param entity the entity to save
+     * @return the saved entity (may have generated ID populated)
+     */
+    {{Feature}}Entity save({{Feature}}Entity entity);
+
+    /**
+     * Finds a {{Feature}} by its primary key.
+     *
+     * @param id the primary key
+     * @return an Optional containing the entity, or empty if not found
+     */
+    Optional<{{Feature}}Entity> findById(Long id);
+
+    /**
+     * Finds all active {{Feature}} records.
+     *
+     * @return list of all active entities
+     */
+    List<{{Feature}}Entity> findAll();
+
+    /**
+     * Deletes a {{Feature}} by its primary key (hard delete or soft delete per impl).
+     *
+     * @param id the primary key
+     */
+    void deleteById(Long id);
+
+    /**
+     * Checks whether a {{Feature}} with the given ID exists.
+     *
+     * @param id the primary key
+     * @return true if found, false otherwise
+     */
+    boolean existsById(Long id);
+}

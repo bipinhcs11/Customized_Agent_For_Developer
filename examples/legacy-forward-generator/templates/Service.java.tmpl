@@ -1,0 +1,53 @@
+package com.company.{{module}}.{{featureLower}}.service;
+
+import com.company.{{module}}.{{featureLower}}.model.dto.{{Feature}}Request;
+import com.company.{{module}}.{{featureLower}}.model.dto.{{Feature}}Response;
+
+import java.util.List;
+
+/**
+ * Business service contract for {{Feature}}.
+ * Defines all operations available at the service layer.
+ */
+public interface {{Feature}}Service {
+
+    /**
+     * Creates a new {{Feature}} record from the given request.
+     *
+     * @param request the creation request DTO
+     * @return the created {{Feature}} as a response DTO
+     */
+    {{Feature}}Response create({{Feature}}Request request);
+
+    /**
+     * Retrieves a {{Feature}} by its unique identifier.
+     *
+     * @param id the {{Feature}} ID
+     * @return the matching {{Feature}} response DTO
+     * @throws com.company.{{module}}.exception.ResourceNotFoundException if not found
+     */
+    {{Feature}}Response getById(Long id);
+
+    /**
+     * Retrieves all active {{Feature}} records.
+     *
+     * @return list of {{Feature}} response DTOs
+     */
+    List<{{Feature}}Response> getAll();
+
+    /**
+     * Updates an existing {{Feature}} record.
+     *
+     * @param id      the {{Feature}} ID to update
+     * @param request the update request DTO
+     * @return the updated {{Feature}} response DTO
+     */
+    {{Feature}}Response update(Long id, {{Feature}}Request request);
+
+    /**
+     * Soft-deletes a {{Feature}} by ID (sets is_active = false).
+     *
+     * @param id the {{Feature}} ID
+     */
+    void delete(Long id);
+}

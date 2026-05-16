@@ -1,0 +1,105 @@
+package com.company.{{module}}.{{featureLower}}.service.impl;
+
+import com.company.{{module}}.{{featureLower}}.dao.{{Feature}}Dao;
+import com.company.{{module}}.{{featureLower}}.model.dto.{{Feature}}Request;
+import com.company.{{module}}.{{featureLower}}.model.dto.{{Feature}}Response;
+import com.company.{{module}}.{{featureLower}}.model.entity.{{Feature}}Entity;
+import com.company.{{module}}.{{featureLower}}.service.{{Feature}}Service;
+import com.company.{{module}}.exception.ResourceNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+/**
+ * Implementation of {@link {{Feature}}Service} containing all business logic for {{Feature}}.
+ */
+@Service
+@Transactional
+public class {{Feature}}ServiceImpl implements {{Feature}}Service {
+
+    private static final Logger log = LoggerFactory.getLogger({{Feature}}ServiceImpl.class);
+
+    private final {{Feature}}Dao dao;
+
+    public {{Feature}}ServiceImpl({{Feature}}Dao dao) {
+        this.dao = dao;
+    }
+
+    @Override
+    public {{Feature}}Response create({{Feature}}Request request) {
+        log.info("Creating {{Feature}} with request: {}", request);
+        {{Feature}}Entity entity = mapToEntity(request);
+        entity = dao.save(entity);
+        log.info("{{Feature}} created with id: {}", entity.getId());
+        return mapToResponse(entity);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public {{Feature}}Response getById(Long id) {
+        log.info("Fetching {{Feature}} with id: {}", id);
+        return dao.findById(id)
+                  .map(this::mapToResponse)
+                  .orElseThrow(() -> new ResourceNotFoundException(
+                      "{{Feature}} not found with id: " + id));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<{{Feature}}Response> getAll() {
+        log.info("Fetching all {{Feature}} records");
+        return dao.findAll()
+                  .stream()
+                  .map(this::mapToResponse)
+                  .collect(Collectors.toList());
+    }
+
+    @Override
+    public {{Feature}}Response update(Long id, {{Feature}}Request request) {
+        log.info("Updating {{Feature}} with id: {}", id);
+        {{Feature}}Entity entity = dao.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                    "{{Feature}} not found with id: " + id));
+        updateEntityFromRequest(entity, request);
+        entity = dao.save(entity);
+        return mapToResponse(entity);
+    }
+
+    @Override
+    public void delete(Long id) {
+        log.info("Deleting {{Feature}} with id: {}", id);
+        if (!dao.existsById(id)) {
+            throw new ResourceNotFoundException("{{Feature}} not found with id: " + id);
+        }
+        dao.deleteById(id);
+    }
+
+    // -------------------------------------------------------------------------
+    // Private mapping helpers
+    // -------------------------------------------------------------------------
+
+    private {{Feature}}Entity mapToEntity({{Feature}}Request request) {
+        {{Feature}}Entity entity = new {{Feature}}Entity();
+        // TODO: map request fields to entity fields
+        // entity.setFieldName(request.getFieldName());
+        return entity;
+    }
+
+    private void updateEntityFromRequest({{Feature}}Entity entity, {{Feature}}Request request) {
+        // TODO: update entity fields from request
+        // entity.setFieldName(request.getFieldName());
+    }
+
+    private {{Feature}}Response mapToResponse({{Feature}}Entity entity) {
+        {{Feature}}Response response = new {{Feature}}Response();
+        response.setId(entity.getId());
+        response.setCreatedAt(entity.getCreatedAt());
+        response.setUpdatedAt(entity.getUpdatedAt());
+        // TODO: map additional entity fields to response
+        return response;
+    }
+}

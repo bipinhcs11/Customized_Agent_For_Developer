@@ -1,0 +1,69 @@
+package com.company.{{module}}.{{featureLower}}.dao.impl;
+
+import com.company.{{module}}.{{featureLower}}.dao.{{Feature}}Dao;
+import com.company.{{module}}.{{featureLower}}.model.entity.{{Feature}}Entity;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * JPA-backed implementation of {@link {{Feature}}Dao}.
+ *
+ * For complex queries (multi-table JOINs, bulk operations), inject JdbcTemplate alongside
+ * the JpaRepository and add methods that use it directly.
+ */
+@Repository
+public class {{Feature}}DaoImpl implements {{Feature}}Dao {
+
+    private final {{Feature}}JpaRepository jpaRepository;
+
+    public {{Feature}}DaoImpl({{Feature}}JpaRepository jpaRepository) {
+        this.jpaRepository = jpaRepository;
+    }
+
+    @Override
+    public {{Feature}}Entity save({{Feature}}Entity entity) {
+        return jpaRepository.save(entity);
+    }
+
+    @Override
+    public Optional<{{Feature}}Entity> findById(Long id) {
+        return jpaRepository.findById(id);
+    }
+
+    @Override
+    public List<{{Feature}}Entity> findAll() {
+        return jpaRepository.findAllByIsActiveTrue();
+    }
+
+    @Override
+    public void deleteById(Long id) {
+        // Soft delete: set is_active = false
+        jpaRepository.findById(id).ifPresent(entity -> {
+            entity.setActive(false);
+            jpaRepository.save(entity);
+        });
+    }
+
+    @Override
+    public boolean existsById(Long id) {
+        return jpaRepository.existsByIdAndIsActiveTrue(id);
+    }
+
+    // -------------------------------------------------------------------------
+    // Internal Spring Data JPA repository
+    // -------------------------------------------------------------------------
+
+    /**
+     * Spring Data JPA repository for {{Feature}}Entity.
+     * Extend with custom derived query methods as needed.
+     */
+    interface {{Feature}}JpaRepository extends JpaRepository<{{Feature}}Entity, Long> {
+        List<{{Feature}}Entity> findAllByIsActiveTrue();
+        boolean existsByIdAndIsActiveTrue(Long id);
+        // Add custom queries below:
+        // List<{{Feature}}Entity> findByStatus({{Feature}}Status status);
+    }
+}

@@ -1,0 +1,67 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Python
+# ─────────────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+.coverage.*
+.tox/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.eggs/
+
+# Virtual envs
+venv/
+.venv/
+env/
+.env
+
+# ─────────────────────────────────────────────────────────────────────────────
+# IDE / editor
+# ─────────────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Java build artifacts (in case examples/ is ever built)
+# ─────────────────────────────────────────────────────────────────────────────
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Agent runtime artifacts
+# ─────────────────────────────────────────────────────────────────────────────
+# Checkpoint files live next to the generated skills; they're regenerated on
+# every run and should not be committed to the target repo.
+.checkpoint.json
+.plan.json
+.index.json
+.links.json
+
+# Local scratch files from one-off runs
+/tmp-*/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Local push helpers — not part of the public deliverable
+# ─────────────────────────────────────────────────────────────────────────────
+agent-repo.bundle
+push-to-github.sh
+
+# Skips for the empty placeholder folder
+skills/feature-skill-generator/MOVED.md

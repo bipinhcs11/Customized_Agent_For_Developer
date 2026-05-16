@@ -1,0 +1,596 @@
+{
+  "projectType": "Microservice",
+  "framework": "Spring Boot",
+  "buildSystem": "Gradle",
+  "javaVersion": "8",
+  "warnings": [
+    "No XML, SQL, or shell sources detected in crawl index; xmlSources/sqlSources/shellSources defaulted to 'none found' for every domain.",
+    "Multiple modules per business domain were merged (e.g. ftgo-order-service + ftgo-order-service-api into order-management) based on package prefix."
+  ],
+  "domains": [
+    {
+      "id": "order-management",
+      "name": "Order Management",
+      "description": "Manages the order aggregate, REST/gRPC APIs, sagas (create/revise/cancel), and inbound saga-participant handlers for the order lifecycle.",
+      "classes": [
+        "HttpBase",
+        "MessagingBase",
+        "TestConfiguration",
+        "DeliveryserviceMessagingBase",
+        "KitchenServiceProxyIntegrationTest",
+        "RestaurantJpaTest",
+        "OrderServiceIntegrationTest",
+        "OrderJpaTest",
+        "OrderJpaTestConfiguration",
+        "OrderServiceGrpIntegrationTestConfiguration",
+        "OrderServiceGrpIntegrationTest",
+        "OrderServiceClient",
+        "TramCommandsAndEventsIntegrationData",
+        "RestaurantMother",
+        "OrderDetailsMother",
+        "CreateOrderSagaTest",
+        "OrderDomainEventPublisherTest",
+        "OrderTest",
+        "TestMessageConsumer2",
+        "OrderServiceTest",
+        "OrderEventConsumerTest",
+        "OrderControllerTest",
+        "OrderServiceComponentTestStepDefinitions",
+        "OrderServiceComponentTest",
+        "OrderCommandHandlers",
+        "OrderCommandHandlersConfiguration",
+        "CreateOrderSagaState",
+        "CreateOrderSaga",
+        "ReviseOrderSaga",
+        "ReviseOrderSagaState",
+        "ReviseOrderSagaData",
+        "CancelOrderSaga",
+        "CancelOrderSagaState",
+        "CancelOrderSagaData",
+        "BeginReviseOrderCommand",
+        "ReverseOrderUpdateCommand",
+        "ConfirmReviseOrderCommand",
+        "UndoBeginReviseOrderCommand",
+        "UndoBeginCancelCommand",
+        "ConfirmCancelOrderCommand",
+        "OrderCommand",
+        "KitchenServiceProxy",
+        "ApproveOrderCommand",
+        "BeginCancelCommand",
+        "ConsumerServiceProxy",
+        "BeginReviseOrderReply",
+        "RejectOrderCommand",
+        "OrderServiceProxy",
+        "AccountingServiceProxy",
+        "Restaurant",
+        "LineItemQuantityChange",
+        "RestaurantNotFoundException",
+        "OptimisticOfflineLockException",
+        "OrderRepository",
+        "PaymentInformation",
+        "OrderServiceWithRepositoriesConfiguration",
+        "OrderLineItemChangeQueued",
+        "OrderAuthorizedCancelRequested",
+        "MenuItem",
+        "OrderCancelRequested",
+        "OrderNotFoundException",
+        "OrderRevised",
+        "OrderLineItems",
+        "OrderRevisionRejected",
+        "OrderService",
+        "DeliveryInformation",
+        "Result",
+        "Builder",
+        "OrderDomainEventPublisher",
+        "RestaurantRepository",
+        "OrderRevision",
+        "RevisedOrder",
+        "OrderServiceConfiguration",
+        "OrderRejectedCancelRequested",
+        "OrderRevisionProposed",
+        "OrderMinimumNotMetException",
+        "InvalidMenuItemIdException",
+        "OrderServiceServer",
+        "OrderServiceImpl",
+        "GrpcConfiguration",
+        "OrderServiceMain",
+        "OrderServiceMessagingConfiguration",
+        "RestaurantEventMapper",
+        "OrderEventConsumer",
+        "RestaurantController",
+        "OrderController",
+        "OrderWebConfiguration",
+        "TraceIdResponseFilter",
+        "GetRestaurantResponse",
+        "GetOrderResponse",
+        "MenuItemIdAndQuantity",
+        "AbstractOrderServiceComponentTest",
+        "CommonTestConfiguration",
+        "CommonMessagingStubConfiguration",
+        "OrderServiceOutOfProcessComponentV0Test",
+        "OrderServiceExternalComponentTest",
+        "OrderServiceInProcessComponentTest",
+        "OrderServiceOutOfProcessComponentTest",
+        "OrderServiceChannels",
+        "OrderDetails",
+        "OrderState",
+        "OrderCancelled",
+        "OrderAuthorized",
+        "OrderCreatedEvent",
+        "OrderLineItem",
+        "OrderDomainEvent",
+        "OrderRejected",
+        "CreateOrderRequest",
+        "LineItem",
+        "CreateOrderResponse",
+        "ReviseOrderRequest"
+      ],
+      "xmlSources": [
+        "none found"
+      ],
+      "sqlSources": [
+        "none found"
+      ],
+      "shellSources": [
+        "none found"
+      ],
+      "configKeys": [
+        "spring.datasource.*",
+        "eventuate.*",
+        "grpc.*"
+      ],
+      "confidence": "HIGH",
+      "isGodClassSplit": false,
+      "godClassParent": null,
+      "flags": [
+        "test"
+      ],
+      "estimatedTokens": 5342
+    },
+    {
+      "id": "kitchen-ticket-management",
+      "name": "Kitchen Ticket Management",
+      "description": "Tracks restaurant kitchen tickets created from orders, accepts/rejects/preparation transitions, and exposes APIs and messaging handlers.",
+      "classes": [
+        "UndoBeginCancelTicketCommand",
+        "TicketDetails",
+        "ChangeTicketLineItemQuantity",
+        "ConfirmCancelTicketCommand",
+        "BeginCancelTicketCommand",
+        "BeginReviseTicketCommand",
+        "UndoBeginReviseTicketCommand",
+        "KitchenServiceChannels",
+        "CreateTicket",
+        "TicketLineItem",
+        "ConfirmCreateTicket",
+        "CreateTicketReply",
+        "CancelCreateTicket",
+        "ConfirmReviseTicketCommand",
+        "TicketCancelled",
+        "TicketDomainEvent",
+        "TicketAcceptedEvent",
+        "TicketAcceptance",
+        "MessagingBase",
+        "TestConfiguration",
+        "DeliveryserviceMessagingBase",
+        "TicketDomainEventPublisherTest",
+        "KitchenServiceInMemoryIntegrationTest",
+        "KitchenServiceCommandHandler",
+        "RestaurantEventMapper",
+        "KitchenServiceEventConsumer",
+        "KitchenServiceMessageHandlersConfiguration",
+        "TicketCreatedEvent",
+        "Restaurant",
+        "Ticket",
+        "TicketNotFoundException",
+        "TicketPickedUpEvent",
+        "TicketState",
+        "MenuItem",
+        "TicketRevised",
+        "RestaurantDetailsVerificationException",
+        "RestaurantMenu",
+        "ChangeLineItemQuantityCommand",
+        "TicketPreparationStartedEvent",
+        "KitchenDomainConfiguration",
+        "KitchenService",
+        "RestaurantRepository",
+        "TicketDomainEventPublisher",
+        "TicketPreparationCompletedEvent",
+        "TicketRepository",
+        "CancelCommand",
+        "KitchenServiceMain",
+        "RestaurantController",
+        "KitchenController",
+        "GetRestaurantResponse",
+        "KitchenServiceWebConfiguration"
+      ],
+      "xmlSources": [
+        "none found"
+      ],
+      "sqlSources": [
+        "none found"
+      ],
+      "shellSources": [
+        "none found"
+      ],
+      "configKeys": [
+        "spring.datasource.*",
+        "eventuate.*"
+      ],
+      "confidence": "HIGH",
+      "isGodClassSplit": false,
+      "godClassParent": null,
+      "flags": [
+        "test"
+      ],
+      "estimatedTokens": 1868
+    },
+    {
+      "id": "delivery-management",
+      "name": "Delivery Management",
+      "description": "Schedules and tracks couriers and deliveries, including availability, action plans, and inbound order-event handlers.",
+      "classes": [
+        "DeliveryActionType",
+        "DeliveryStatus",
+        "DeliveryState",
+        "CourierAvailability",
+        "DeliveryInfo",
+        "ActionInfo",
+        "RestaurantJpaTest",
+        "Config",
+        "CourierJpaTest",
+        "DeliveryJpaTest",
+        "DeliveryServiceTest",
+        "DeliveryServiceTestData",
+        "RestaurantEventMother",
+        "DeliveryServiceInProcessComponentTest",
+        "DeliveryServiceOutOfProcessComponentTest",
+        "Restaurant",
+        "Delivery",
+        "Action",
+        "DeliveryService",
+        "CustomCourierRepository",
+        "Plan",
+        "DeliveryRepository",
+        "DeliveryServiceDomainConfiguration",
+        "CustomCourierRepositoryImpl",
+        "RestaurantRepository",
+        "CourierRepository",
+        "Courier",
+        "DeliveryServiceMain",
+        "DeliveryMessageHandlers",
+        "DeliveryServiceMessagingConfiguration",
+        "RestaurantEventMapper",
+        "DeliveryServiceController",
+        "DeliveryServiceWebConfiguration"
+      ],
+      "xmlSources": [
+        "none found"
+      ],
+      "sqlSources": [
+        "none found"
+      ],
+      "shellSources": [
+        "none found"
+      ],
+      "configKeys": [
+        "spring.datasource.*",
+        "eventuate.*"
+      ],
+      "confidence": "HIGH",
+      "isGodClassSplit": false,
+      "godClassParent": null,
+      "flags": [
+        "test"
+      ],
+      "estimatedTokens": 1795
+    },
+    {
+      "id": "restaurant-management",
+      "name": "Restaurant Management",
+      "description": "Owns restaurant menu/master data including the standalone service, Spring service, and AWS Lambda variant that publishes restaurant events.",
+      "classes": [
+        "RestaurantServiceLambdaConfigurationTest",
+        "AwsLambdaError",
+        "RequestContext",
+        "ApiGatewayResponse",
+        "Builder",
+        "ApiGatewayRequest",
+        "AbstractHttpHandler",
+        "Identity",
+        "MenuItem",
+        "RestaurantMenu",
+        "CreateRestaurantRequest",
+        "RestaurantRepository",
+        "RestaurantService",
+        "RestaurantServiceDomainConfiguration",
+        "CreateRestaurantRequestHandler",
+        "FindRestaurantRequestHandler",
+        "RestaurantServiceLambdaConfiguration",
+        "GetRestaurantResponse",
+        "AbstractAutowiringHttpRequestHandler",
+        "RestaurantCreated",
+        "RestaurantDomainEvent",
+        "RestaurantMenuRevised",
+        "CreateRestaurantResponse",
+        "RestaurantServiceChannels",
+        "DeliveryserviceMessagingBase",
+        "TestConfiguration",
+        "RestaurantDomainEventPublisherTest",
+        "RestaurantCreatedSerializationTest",
+        "RestaurantServiceMain",
+        "RestaurantDomainEventPublisher",
+        "RestaurantController"
+      ],
+      "xmlSources": [
+        "none found"
+      ],
+      "sqlSources": [
+        "none found"
+      ],
+      "shellSources": [
+        "none found"
+      ],
+      "configKeys": [
+        "spring.datasource.*",
+        "eventuate.*",
+        "aws.lambda.*"
+      ],
+      "confidence": "HIGH",
+      "isGodClassSplit": false,
+      "godClassParent": null,
+      "flags": [
+        "test"
+      ],
+      "estimatedTokens": 1736
+    },
+    {
+      "id": "accounting-authorization",
+      "name": "Accounting and Authorization",
+      "description": "Authorizes, reverses, and revises payment commands for consumer accounts as a saga participant on the order flow.",
+      "classes": [
+        "ReverseAuthorizationCommand",
+        "ReviseAuthorization",
+        "AccountingServiceChannels",
+        "AccountDisabledReply",
+        "AccountingServiceCommandHandlerTest",
+        "ConsumerCreated",
+        "ReverseAuthorizationCommandInternal",
+        "CreateAccountCommand",
+        "AccountAuthorizationFailed",
+        "AuthorizeCommandInternal",
+        "AccountCreatedEvent",
+        "AccountServiceConfiguration",
+        "AccountCommand",
+        "Account",
+        "ReviseAuthorizationCommandInternal",
+        "AccountAuthorizedEvent",
+        "AccountingService",
+        "AccountDisabledException",
+        "AccountingServiceMain",
+        "AccountServiceChannelConfiguration",
+        "AccountingMessagingConfiguration",
+        "AccountingServiceCommandHandler",
+        "AccountingEventConsumer",
+        "AccountingWebConfiguration",
+        "AccountsController",
+        "GetAccountResponse",
+        "AuthorizeCommand"
+      ],
+      "xmlSources": [
+        "none found"
+      ],
+      "sqlSources": [
+        "none found"
+      ],
+      "shellSources": [
+        "none found"
+      ],
+      "configKeys": [
+        "spring.datasource.*",
+        "eventuate.*"
+      ],
+      "confidence": "HIGH",
+      "isGodClassSplit": false,
+      "godClassParent": null,
+      "flags": [
+        "test"
+      ],
+      "estimatedTokens": 807
+    },
+    {
+      "id": "order-history-cqrs",
+      "name": "Order History CQRS View",
+      "description": "DynamoDB-backed CQRS read model that projects order, delivery, and restaurant events into a queryable order-history view.",
+      "classes": [
+        "OrderHistoryDaoDynamoDbTest",
+        "OrderHistoryEventHandlersTest",
+        "TestConfiguration",
+        "OrderHistoryControllerTest",
+        "OrderHistory",
+        "Location",
+        "DeliveryPickedUp",
+        "OrderHistoryFilter",
+        "OrderHistoryDao",
+        "Expressions",
+        "DeliveryStatus",
+        "SourceEvent",
+        "AvMapBuilder",
+        "Order",
+        "OrderHistoryDaoDynamoDb",
+        "DynamoDBHealthIndicator",
+        "Maps",
+        "OrderHistoryDynamoDBConfiguration",
+        "OrderHistoryServiceMain",
+        "OrderHistoryServiceMessagingConfiguration",
+        "OrderHistoryEventHandlers",
+        "OrderHistoryWebConfiguration",
+        "OrderHistoryController",
+        "GetOrdersResponse",
+        "GetOrderResponse"
+      ],
+      "xmlSources": [
+        "none found"
+      ],
+      "sqlSources": [
+        "none found"
+      ],
+      "shellSources": [
+        "none found"
+      ],
+      "configKeys": [
+        "aws.dynamodb.*",
+        "eventuate.*"
+      ],
+      "confidence": "HIGH",
+      "isGodClassSplit": false,
+      "godClassParent": null,
+      "flags": [
+        "god_class",
+        "test"
+      ],
+      "estimatedTokens": 1607
+    },
+    {
+      "id": "shared-infrastructure",
+      "name": "Shared Infrastructure",
+      "description": "Cross-cutting reusable types (Money, Address, common JSON config), Gradle buildSrc plugins, test utilities, and end-to-end test scaffolding used by 3+ domains.",
+      "classes": [
+        "ValidatingJSONMapper",
+        "FtgoTestUtil",
+        "MoneySerializationTest",
+        "MoneyContainer",
+        "MoneyTest",
+        "CommonConfiguration",
+        "CommonJsonMapperInitializer",
+        "Address",
+        "MoneyModule",
+        "MoneyDeserializer",
+        "MoneySerializer",
+        "RevisedOrderLineItem",
+        "Money",
+        "NotYetImplementedException",
+        "UnsupportedStateTransitionException",
+        "PersonName",
+        "CommonSwaggerConfiguration",
+        "WaitForMySqlPlugin",
+        "WaitForMySql",
+        "EndToEndTests"
+      ],
+      "xmlSources": [
+        "none found"
+      ],
+      "sqlSources": [
+        "none found"
+      ],
+      "shellSources": [
+        "none found"
+      ],
+      "configKeys": [
+        "spring.*",
+        "logging.*"
+      ],
+      "confidence": "MEDIUM",
+      "isGodClassSplit": false,
+      "godClassParent": null,
+      "flags": [
+        "god_class",
+        "test"
+      ],
+      "estimatedTokens": 1289
+    },
+    {
+      "id": "api-gateway",
+      "name": "API Gateway",
+      "description": "Reactive Spring WebFlux gateway that aggregates order, consumer, delivery, and restaurant proxy calls and exposes a unified REST surface.",
+      "classes": [
+        "ApiGatewayIntegrationTest",
+        "ApiGatewayIntegrationTestConfiguration",
+        "TestConfiguration",
+        "OrderServiceProxyIntegrationTest",
+        "ApiGatewayApplication",
+        "ConsumerDestinations",
+        "ConsumerConfiguration",
+        "OrderDetails",
+        "OrderHandlers",
+        "OrderDestinations",
+        "OrderConfiguration",
+        "BillInfo",
+        "DeliveryService",
+        "OrderNotFoundException",
+        "TicketInfo",
+        "DeliveryInfo",
+        "KitchenService",
+        "OrderServiceProxy",
+        "OrderInfo",
+        "AccountingService"
+      ],
+      "xmlSources": [
+        "none found"
+      ],
+      "sqlSources": [
+        "none found"
+      ],
+      "shellSources": [
+        "none found"
+      ],
+      "configKeys": [
+        "spring.webflux.*",
+        "ftgo.*.url"
+      ],
+      "confidence": "HIGH",
+      "isGodClassSplit": false,
+      "godClassParent": null,
+      "flags": [
+        "test"
+      ],
+      "estimatedTokens": 800
+    },
+    {
+      "id": "consumer-management",
+      "name": "Consumer Management",
+      "description": "Manages consumer registration, validation, and order authorization checks as a saga participant.",
+      "classes": [
+        "ConsumerServiceChannels",
+        "ConsumerServiceInMemoryIntegrationTest",
+        "TestConfiguration",
+        "ValidateOrderByConsumerTest",
+        "ConsumerControllerTest",
+        "ValidateOrderByConsumer",
+        "ConsumerRepository",
+        "ConsumerCreated",
+        "ConsumerServiceConfiguration",
+        "ConsumerVerificationFailedException",
+        "ConsumerNotFoundException",
+        "ConsumerService",
+        "ConsumerServiceCommandHandlers",
+        "ConsumerServiceMain",
+        "CreateConsumerRequest",
+        "ConsumerWebConfiguration",
+        "GetConsumerResponse",
+        "CreateConsumerResponse",
+        "ConsumerController"
+      ],
+      "xmlSources": [
+        "none found"
+      ],
+      "sqlSources": [
+        "none found"
+      ],
+      "shellSources": [
+        "none found"
+      ],
+      "configKeys": [
+        "spring.datasource.*",
+        "eventuate.*"
+      ],
+      "confidence": "HIGH",
+      "isGodClassSplit": false,
+      "godClassParent": null,
+      "flags": [
+        "test"
+      ],
+      "estimatedTokens": 800
+    }
+  ]
+}

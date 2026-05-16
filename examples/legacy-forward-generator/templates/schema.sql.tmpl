@@ -1,0 +1,58 @@
+-- =============================================================================
+-- {{Feature}} Schema
+-- =============================================================================
+-- Replace {{feature_snake}} with the actual table name (snake_case)
+-- e.g., file_delivery, invoice_compare, payment_method_determination
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS {{feature_snake}} (
+    id              BIGSERIAL PRIMARY KEY,
+
+    -- -------------------------------------------------------------------------
+    -- Feature-specific columns (replace/extend below)
+    -- -------------------------------------------------------------------------
+    name            VARCHAR(255)    NOT NULL,
+    status          VARCHAR(30)     NOT NULL DEFAULT 'PENDING',
+    description     TEXT,
+    reference_id    VARCHAR(100),
+
+    -- -------------------------------------------------------------------------
+    -- Audit columns (always include)
+    -- -------------------------------------------------------------------------
+    created_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
+    created_by      VARCHAR(100),
+    updated_by      VARCHAR(100),
+    is_active       BOOLEAN         NOT NULL DEFAULT TRUE
+);
+
+-- Indexes for common query patterns
+CREATE INDEX IF NOT EXISTS idx_{{feature_snake}}_status
+    ON {{feature_snake}}(status);
+
+CREATE INDEX IF NOT EXISTS idx_{{feature_snake}}_created_at
+    ON {{feature_snake}}(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_{{feature_snake}}_created_by
+    ON {{feature_snake}}(created_by);
+
+CREATE INDEX IF NOT EXISTS idx_{{feature_snake}}_is_active
+    ON {{feature_snake}}(is_active)
+    WHERE is_active = TRUE;
+
+-- =============================================================================
+-- Auto-update updated_at trigger (PostgreSQL)
+-- =============================================================================
+CREATE OR REPLACE FUNCTION update_{{feature_snake}}_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_{{feature_snake}}_updated_at ON {{feature_snake}};
+
+CREATE TRIGGER trg_{{feature_snake}}_updated_at
+    BEFORE UPDATE ON {{feature_snake}}
+    FOR EACH ROW EXECUTE FUNCTION update_{{feature_snake}}_updated_at();
