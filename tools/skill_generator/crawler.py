@@ -761,8 +761,10 @@ def parse_shell_file(path: Path, repo_root: Path) -> tuple:
 def _iter_files(repo_root: Path, extra_excludes: set) -> Iterable:
     excludes = DEFAULT_EXCLUDE_DIRS | set(extra_excludes)
     for path in repo_root.rglob("*"):
-        # Skip excluded directories anywhere in the tree
-        parts = set(path.parts)
+        # Check only the parts *inside* the repo root — using path.parts (the
+        # absolute path) would silently skip everything if the repo itself is
+        # checked out under a directory named "build", "target", "generated", etc.
+        parts = set(path.relative_to(repo_root).parts)
         if parts & excludes:
             continue
         if not path.is_file():
@@ -812,9 +814,13 @@ def _detect_build_system(repo_root: Path) -> str:
 
 def _normalize_java_version(raw: str) -> str:
     """Map '1.8' to '8', strip JavaVersion.VERSION_17 prefix, etc."""
-    raw = raw.strip().lstrip("v").lstrip("V")
+    raw = raw.strip()
+    # Strip the VERSION_ prefix before stripping the "v"/"V" leading char —
+    # doing it the other way strips the V out of VERSION_ and the prefix check
+    # never matches (e.g. lstrip("V") on "VERSION_17" → "ERSION_17").
     if raw.startswith("VERSION_"):
         raw = raw[len("VERSION_"):]
+    raw = raw.lstrip("v").lstrip("V")
     if "." in raw:
         major, minor = raw.split(".", 1)
         if major == "1":
