@@ -151,4 +151,6 @@ If a project requires AST-level accuracy, the Python `javalang` library can be d
 
 ## Tool version & schema version
 
-The current tool version is `0.3.0` (host-agent-driven). The output JSON schema version is `1`. If the schema changes in a backwards-incompatible way (renamed fields, removed sections), `schema_version` will increment so downstream consumers can branch on it.
+The current tool version is `0.2.0` (as reported by `skill-gen --version`, defined in `crawler.py` as `TOOL_VERSION`). The output JSON schema version is `2` (`SCHEMA_VERSION` in the same file). If the schema changes in a backwards-incompatible way (renamed fields, removed sections), `SCHEMA_VERSION` increments so downstream consumers can branch on it.
+
+A bump to `0.3.0` to reflect the host-agent-driven refactor (PR-merged earlier) is planned but not yet applied to the constant; treat the version string as a build identifier rather than a marketing milestone.

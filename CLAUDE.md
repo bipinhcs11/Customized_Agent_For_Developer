@@ -48,7 +48,7 @@ The repo also contains the Phase-2 updater that keeps generated skills current a
 | Reference SKILL.mds in THIS repo | `skills/<feature>/SKILL.md` |
 | Generated SKILL.mds in a TARGET repo | `.github/skills/<feature>/SKILL.md` |
 | Reference Java examples | `examples/<feature>/` (read-only — illustrative style only) |
-| Python CLI source | `tools/skill_generator/` (to be built) |
+| Python CLI source | `tools/skill_generator/` |
 | Multi-repo orchestration config | `agent-config.yml` (to be built) |
 | Original problem statement | `OPUS_PROMPT.md` (read-only reference) |
 
