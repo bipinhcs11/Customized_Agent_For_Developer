@@ -174,7 +174,9 @@ def _check_frontmatter(frontmatter: str, result: ValidationResult) -> None:
     for fld in REQUIRED_FRONTMATTER_FIELDS:
         if fld not in pairs:
             result.errors.append(f"frontmatter missing required field: {fld}")
-    if "version" in pairs:
+        elif not pairs[fld].strip():
+            result.errors.append(f"frontmatter field '{fld}' is empty")
+    if "version" in pairs and pairs["version"].strip():
         try:
             int(pairs["version"])
         except ValueError:

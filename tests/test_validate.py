@@ -133,6 +133,13 @@ class TestFrontmatter(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertTrue(any("'version' must be an integer" in e for e in result.errors))
 
+    def test_empty_value_errors(self):
+        # Codex follow-up: `skill: ` with empty value should error, not pass
+        broken = VALID_SAMPLE.replace("skill: Sample Feature\n", "skill: \n")
+        result = validate(broken)
+        self.assertFalse(result.ok)
+        self.assertTrue(any("'skill' is empty" in e for e in result.errors))
+
     def test_all_required_fields_covered(self):
         # Sanity: every field documented as required is in the REQUIRED list
         for fld in ("skill", "domain", "version", "project_type", "framework",

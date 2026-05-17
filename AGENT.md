@@ -94,7 +94,16 @@ Output: one `.github/skills/<domain-id>/SKILL.md` per domain, conforming to the 
 
 `link-emit` collects the first ~600 characters of each generated SKILL.md plus its domain id and writes a prompt asking the host agent to identify cross-domain dependencies. Signals: direct class instantiation across domains, injected services from another domain, shared DAOs, exceptions thrown in one domain caught in another, config values shared across domains.
 
-The host agent's response is a JSON `links[]` array where each link has `from`, `to`, `reason`, and `type` (`calls` / `shares` / `extends` / `configures`). `link-ingest` reads that response and, for each link, updates both SKILL.md files: writes `related_skills` in the frontmatter and adds a row to the Related Skills table in the body.
+The host agent's response is a JSON `links[]` array where each link has `from`, `to`, `reason`, and `type` (`calls` / `shares` / `extends` / `configures`). `link-ingest` reads that response and, for each link, updates **both** SKILL.md files: writes `related_skills` in the frontmatter and adds a row to the Related Skills table in the body.
+
+On the `to`-side SKILL.md, the relationship type is written in its inverted form so the direction stays clear when reading either skill in isolation:
+
+| Forward (`from` side) | Reverse (`to` side) |
+|---|---|
+| `calls` | `called-by` |
+| `extends` | `extended-by` |
+| `configures` | `configured-by` |
+| `shares` | `shares` (symmetric) |
 
 **Total host-agent turns for a 10-domain repo:** approximately 12 (1 plan + 10 generate + 1 link). All inside an AI session the developer already has — no extra subscription, no API key.
 
