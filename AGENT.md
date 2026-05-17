@@ -204,7 +204,7 @@ Reference Java implementations live in `examples/<feature>/` (read-only). Their 
 
 ## Configuration
 
-There is no `model:` setting — the model is whichever one your host AI session is running. Override paths via CLI flags:
+There is no `model:` setting — the model is whichever one your host AI session is running. For enterprise guidance on when to use Claude Opus-class sessions, Claude Sonnet-class sessions, Codex, or Copilot Chat from VS Code/IntelliJ, see `docs/enterprise-agent-selection-guide.md`. Override paths via CLI flags:
 
 | Flag | Default | What it does |
 |---|---|---|

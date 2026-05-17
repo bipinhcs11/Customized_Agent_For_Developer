@@ -7,7 +7,7 @@
 [![Verified on FTGO](https://img.shields.io/badge/verified-microservices.io%2Fftgo-brightgreen)](https://github.com/microservices-patterns/ftgo-application)
 [![Status: internal beta](https://img.shields.io/badge/status-internal_beta-orange)]()
 
-> **Status — internal beta.** Use freely on real Java repos; expect rough edges. See [`docs/release-readiness-checklist.md`](./docs/release-readiness-checklist.md) for what must land before this is recommended for unsupervised enterprise-wide rollout (notably: Stage-3 config value collection, chunk-and-merge for very large domains, and end-to-end integration tests).
+> **Status — internal beta.** Use freely on real Java repos; expect rough edges. See [`docs/release-readiness-checklist.md`](./docs/release-readiness-checklist.md) for what must land before this is recommended for unsupervised enterprise-wide rollout (notably: domain-safe source matching for duplicate class names, chunk-and-merge for very large domains, stronger end-to-end verification, and multi-repo orchestration).
 
 ---
 
@@ -76,7 +76,22 @@ Each LLM-dependent stage has two halves: `*-emit` writes a prompt file, you past
 
 **Why this shape?** The Python tool is fully deterministic — file walking, parsing, source assembly, response application. The host AI agent does the reasoning. Nothing in this repo talks to the network; nothing requires an API key.
 
-For a visual sequence diagram of the IDE-side developer experience — from typing *"analyze this project"* through committed SKILL.md files — see [`docs/agent-invocation-flow.md`](./docs/agent-invocation-flow.md). It renders natively on GitHub.
+For a visual sequence diagram of the IDE-side developer experience — from typing *"analyze this project"* through committed SKILL.md files — see [`docs/agent-invocation-flow.md`](./docs/agent-invocation-flow.md). For enterprise rollout guidance across VS Code, IntelliJ, Copilot, Claude, and Codex, see [`docs/enterprise-agent-selection-guide.md`](./docs/enterprise-agent-selection-guide.md).
+
+### Enterprise agent selection
+
+The tool itself has no model setting. The selected host AI session supplies the reasoning, so teams can run the same emit/ingest workflow from Claude, Codex, Copilot Chat, or another approved IDE assistant.
+
+For most enterprise teams:
+
+| Workload | Recommended host session |
+|---|---|
+| First run on an unknown or legacy repo | Strongest available reasoning session, such as Claude Opus-class or Codex high-reasoning |
+| First run on a clean Spring Boot service | Claude Sonnet-class, Codex, or another capable approved session |
+| Incremental update for one reviewed feature | Sonnet-class, Codex, or Copilot Chat |
+| Everyday feature questions after skills are committed | GitHub Copilot Chat in VS Code/IntelliJ, Claude, or Codex reading `.github/skills` |
+
+The recommended operating model is centralized: repo owners or feature leads spend the initial generation turns once, commit the generated skills, and let every developer benefit from the shared feature context during daily work.
 
 ---
 

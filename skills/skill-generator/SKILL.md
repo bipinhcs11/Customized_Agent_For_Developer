@@ -5,7 +5,7 @@ description: Analyze a Java repository (Spring Boot, Spring MVC, Struts, Quarkus
 
 # Skill Generator
 
-This skill walks the host AI session (Claude Code, GitHub Copilot Chat, Codex, Claude Cowork) through the four-stage FeatureBased Skill Generator pipeline. The Python CLI in `tools/skill_generator/` is deterministic and stdlib-only — it never calls an LLM directly. Each LLM-dependent stage emits a prompt file; you (the host agent) read it, produce the response, save it back to disk, and the CLI ingests it.
+This skill walks the host AI session (Claude Code, GitHub Copilot Chat, Codex, Claude Cowork, or another enterprise-approved assistant) through the four-stage FeatureBased Skill Generator pipeline. The Python CLI in `tools/skill_generator/` is deterministic and stdlib-only — it never calls an LLM directly. Each LLM-dependent stage emits a prompt file; you (the host agent) read it, produce the response, save it back to disk, and the CLI ingests it.
 
 The final output is one `SKILL.md` per business feature under `<target-repo>/.github/skills/<feature-id>/`, each conforming to the [artifact-3 SKILL.md standard](https://claude.ai/public/artifacts/1689b220-c09f-467c-a8af-1eb3bb1a30fe).
 
@@ -32,6 +32,7 @@ Before starting, confirm with the developer:
 | Python 3.10+ available | `python3 --version` — abort with a clear message if older |
 | Where this skill-generator repo is checked out | Needed for `python3 -m tools.skill_generator.cli`. If unknown, default to `~/Documents/Customized_Agent_For_Developers/FeatureBased_Skill_Generator_Agent` |
 | Skip tests? | Off by default. Pass `--skip-tests` to the crawler if the developer says yes |
+| Host session/model tier | For first-run generation on unknown or legacy repos, recommend the strongest approved reasoning session. For routine updates, use the team default. See `docs/enterprise-agent-selection-guide.md` |
 
 Set two shell variables for the session and use them everywhere:
 
@@ -155,6 +156,19 @@ After Stage 4, tell the developer:
 - Mention the intermediate `.skill-gen/` directory can be added to `.gitignore` or kept for re-runs
 
 A typical 10-domain repo takes ~12 host-agent turns total (1 plan + 10 generate + 1 link).
+
+## Enterprise agent selection
+
+The tool has no `model:` setting. Use the model selected in the current host session:
+
+| Workload | Recommended host session |
+|---|---|
+| First run on an unknown or legacy repo | Strongest approved reasoning session, such as Claude Opus-class or Codex high-reasoning |
+| First run on a clean Spring Boot service | Claude Sonnet-class, Codex, or another capable approved session |
+| Incremental update for one reviewed feature | Sonnet-class, Codex, or Copilot Chat |
+| Everyday feature questions after skills are committed | GitHub Copilot Chat in VS Code/IntelliJ, Claude, or Codex reading `.github/skills` |
+
+For enterprise teams, prefer a shared ownership model: repo owners or feature leads run first generation once, commit the generated skills, and let all developers consume that durable context from their normal IDE assistant. Do not ask every developer to regenerate the same skills independently.
 
 ## Phase 2 — Updater (when code changes)
 
