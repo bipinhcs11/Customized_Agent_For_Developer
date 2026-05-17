@@ -5,6 +5,9 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![Zero outbound API calls](https://img.shields.io/badge/network-zero_outbound-green)]()
 [![Verified on FTGO](https://img.shields.io/badge/verified-microservices.io%2Fftgo-brightgreen)](https://github.com/microservices-patterns/ftgo-application)
+[![Status: internal beta](https://img.shields.io/badge/status-internal_beta-orange)]()
+
+> **Status — internal beta.** Use freely on real Java repos; expect rough edges. See [`docs/release-readiness-checklist.md`](./docs/release-readiness-checklist.md) for what must land before this is recommended for unsupervised enterprise-wide rollout (notably: Stage-3 config value collection, chunk-and-merge for very large domains, and end-to-end integration tests).
 
 ---
 
@@ -397,12 +400,7 @@ For the rationale behind the design decisions, see `OPUS_PROMPT.md` (original pr
 
 ## License
 
-This project does not yet have a license file. Before publishing for wider use, add one:
-- **MIT** for permissive use (most common for developer tools)
-- **Apache 2.0** for patent grant in addition to permissive use
-- **Closed / proprietary** if your enterprise restricts redistribution
-
-Once chosen, drop a `LICENSE` file at the repo root.
+MIT — see [`LICENSE`](./LICENSE) at the repo root.
 
 ---
 
