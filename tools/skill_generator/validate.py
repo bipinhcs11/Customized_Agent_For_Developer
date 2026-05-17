@@ -64,6 +64,34 @@ H2_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 JAVA_FENCE_RE = re.compile(r"^```\s*[Jj]ava\b", re.MULTILINE)
 CITATION_RE = re.compile(r"\b[A-Z][A-Za-z0-9_]*\.[a-z_][A-Za-z0-9_]*\(")
 
+# Match any fenced block — used by the untagged-Java detector to look inside
+# blocks whose language tag is empty (Data Flow ASCII art etc.) and decide
+# whether the content is actually Java code.
+ANY_FENCE_RE = re.compile(r"^```(\S*)\s*\n(.*?)^```", re.MULTILINE | re.DOTALL)
+
+# Strong Java signals that won't appear in prose or Data Flow ASCII trees.
+# Tightened deliberately — we'd rather miss a borderline snippet than flag
+# legitimate diagram content.
+JAVA_CODE_KEYWORDS_RE = re.compile(
+    r"\b(public\s+(?:class|interface|enum|static)|"
+    r"private\s+(?:class|static)|"
+    r"protected\s+(?:class|static)|"
+    r"import\s+java\.|"
+    r"package\s+[a-z][\w.]*\s*;)",
+    re.MULTILINE,
+)
+
+# Lines that look like bullets or numbered-list items inside a section body.
+# Captures the text after the bullet marker so we can check it for a citation.
+BULLET_RE = re.compile(r"^\s*(?:[-*]|\d+\.)\s+(.+)$", re.MULTILINE)
+
+# Strings developers sometimes use instead of writing real content or the
+# literal "none found". Lower-cased for case-insensitive comparison.
+PLACEHOLDER_STRINGS = {
+    "n/a", "na", "tbd", "todo", "placeholder", "xxx",
+    "?", "??", "???", "---", "tbc",
+}
+
 
 @dataclass
 class ValidationResult:
@@ -103,8 +131,10 @@ def validate(skill_md: str, path: str = "<unknown>") -> ValidationResult:
     _check_body_sections(body, result)
     _check_business_logic_subsections(body, result)
     _check_no_java_blocks(body, result)
+    _check_no_placeholder_content(body, result)
     _check_none_found_for_empty(body, result)
     _check_citations(body, result)
+    _check_per_bullet_citations(body, result)
 
     return result
 
@@ -232,11 +262,89 @@ def _subsection_body(body: str, parent: str, child: str):
 # ─── Content rules ────────────────────────────────────────────────────────────
 
 def _check_no_java_blocks(body: str, result: ValidationResult) -> None:
+    """Catch both ```java fences (explicit) and untagged ``` fences whose
+    content contains Java keyword markers (`public class`, `package com.x;`,
+    `import java.util.List`, etc.). The Data Flow section legitimately uses
+    untagged fences for ASCII trees — those won't contain these keywords."""
+    seen_starts: set = set()
     for m in JAVA_FENCE_RE.finditer(body):
         line_num = body[:m.start()].count("\n") + 1
         result.errors.append(
-            f"body contains a Java code block at line ~{line_num} — tables/prose only"
+            f"body contains a Java code block at line ~{line_num} (```java tag) — tables/prose only"
         )
+        seen_starts.add(m.start())
+
+    for m in ANY_FENCE_RE.finditer(body):
+        if m.start() in seen_starts:
+            continue
+        tag = m.group(1).strip().lower()
+        # Skip blocks with a non-empty, non-text language tag (yaml, json,
+        # bash, etc. are all fine in the body — they're not Java).
+        if tag and tag not in {"text", "txt", "ascii", "diff", "plain"}:
+            continue
+        content = m.group(2)
+        if JAVA_CODE_KEYWORDS_RE.search(content):
+            line_num = body[:m.start()].count("\n") + 1
+            result.errors.append(
+                f"body contains a Java code block at line ~{line_num} (untagged fence with Java keywords) — tables/prose only"
+            )
+
+
+def _check_no_placeholder_content(body: str, result: ValidationResult) -> None:
+    """Sections that hold only a placeholder string (`N/A`, `TBD`, `TODO`,
+    `PLACEHOLDER`, `XXX`, `---`, etc.) violate the literal-string rule:
+    AGENT.md says empty sections must contain the literal 'none found',
+    not a substitute. Also applies to Business Logic subsections."""
+    def _check(section_name: str, body_text):
+        if body_text is None:
+            return
+        stripped = body_text.strip().lower()
+        if not stripped or stripped == NONE_FOUND:
+            return
+        if stripped in PLACEHOLDER_STRINGS:
+            result.errors.append(
+                f"section '{section_name}' contains placeholder text "
+                f"({body_text.strip()!r}) — use 'none found' or fill the section"
+            )
+
+    for section in REQUIRED_BODY_SECTIONS:
+        if section == "Business Logic":
+            for sub in REQUIRED_BUSINESS_LOGIC_SUBSECTIONS:
+                _check(sub, _subsection_body(body, "Business Logic", sub))
+        else:
+            _check(section, _section_body(body, section))
+
+
+def _check_per_bullet_citations(body: str, result: ValidationResult) -> None:
+    """Warning-level per-bullet citation check. The existing _check_citations
+    is section-level (one citation in the section satisfies it). This walker
+    flags specific bullet lines that have no ClassName.methodName() citation,
+    which is what Codex's review called out as a false negative.
+
+    Skips table rows ('|'-prefixed) and template hints ('['-prefixed) since
+    those have legitimate non-citation formats."""
+    for section in CITATION_REQUIRED_SECTIONS:
+        if section in REQUIRED_BUSINESS_LOGIC_SUBSECTIONS:
+            sb = _subsection_body(body, "Business Logic", section)
+        else:
+            sb = _section_body(body, section)
+        if sb is None:
+            continue
+        text = sb.strip()
+        if not text or text.lower() == NONE_FOUND:
+            continue
+        for m in BULLET_RE.finditer(sb):
+            bullet = m.group(1).strip()
+            if not bullet:
+                continue
+            if bullet.startswith("|") or bullet.startswith("["):
+                continue
+            if CITATION_RE.search(bullet):
+                continue
+            preview = bullet if len(bullet) <= 70 else bullet[:67] + "..."
+            result.warnings.append(
+                f"section '{section}' has a bullet without ClassName.method() citation: \"{preview}\""
+            )
 
 
 def _check_none_found_for_empty(body: str, result: ValidationResult) -> None:

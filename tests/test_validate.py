@@ -266,6 +266,158 @@ class TestCitationWarning(unittest.TestCase):
         self.assertEqual(result.warnings, [])
 
 
+class TestUntaggedJavaFenceDetection(unittest.TestCase):
+    """Codex follow-up: ```java fences are caught but an UNTAGGED fence with
+    Java keywords inside slips through. Fix: detect Java keywords in untagged
+    fenced blocks too. Data Flow's ASCII art (no Java keywords) must still pass."""
+
+    def test_untagged_fence_with_public_class_errors(self):
+        broken = VALID_SAMPLE.replace(
+            "## Database & Storage\n- Tables: sample\n",
+            "## Database & Storage\n- Tables: sample\n\n```\npublic class Foo {}\n```\n"
+        )
+        result = validate(broken)
+        self.assertFalse(result.ok,
+                         f"expected error for untagged Java block; got {result.errors}")
+        self.assertTrue(any("untagged fence" in e for e in result.errors))
+
+    def test_untagged_fence_with_import_java_errors(self):
+        broken = VALID_SAMPLE.replace(
+            "## External Dependencies\nnone found\n",
+            "## External Dependencies\n\n```\nimport java.util.List;\n```\n"
+        )
+        result = validate(broken)
+        self.assertFalse(result.ok)
+        self.assertTrue(any("untagged fence" in e for e in result.errors))
+
+    def test_untagged_fence_with_package_decl_errors(self):
+        broken = VALID_SAMPLE.replace(
+            "## External Dependencies\nnone found\n",
+            "## External Dependencies\n\n```\npackage com.acme.foo;\n```\n"
+        )
+        result = validate(broken)
+        self.assertFalse(result.ok)
+        self.assertTrue(any("untagged fence" in e for e in result.errors))
+
+    def test_data_flow_ascii_diagram_passes(self):
+        # The sample's Data Flow has an untagged fence with ASCII art and a
+        # ClassName.method() reference — that's NOT Java keywords, must pass.
+        result = validate(VALID_SAMPLE)
+        self.assertTrue(result.ok)
+        self.assertFalse(any("untagged fence" in e for e in result.errors))
+
+    def test_other_language_tag_passes(self):
+        broken = VALID_SAMPLE.replace(
+            "## External Dependencies\nnone found\n",
+            "## External Dependencies\n\n```yaml\nspring:\n  datasource:\n    url: foo\n```\n"
+        )
+        result = validate(broken)
+        self.assertTrue(result.ok,
+                        f"non-Java tagged block should pass; got {result.errors}")
+
+
+class TestPlaceholderContentRejected(unittest.TestCase):
+    """Codex follow-up: section content of 'N/A' / 'TBD' / etc. previously
+    passed the empty-section check. AGENT.md requires the literal 'none found'."""
+
+    def test_na_rejected(self):
+        broken = VALID_SAMPLE.replace(
+            "## Edge Cases\n- Null input handled — SampleService.validate()\n",
+            "## Edge Cases\nN/A\n"
+        )
+        result = validate(broken)
+        self.assertFalse(result.ok)
+        self.assertTrue(any("placeholder text" in e for e in result.errors))
+
+    def test_tbd_rejected(self):
+        broken = VALID_SAMPLE.replace(
+            "## Legacy Notes\nnone found\n",
+            "## Legacy Notes\nTBD\n"
+        )
+        result = validate(broken)
+        self.assertFalse(result.ok)
+        self.assertTrue(any("placeholder text" in e for e in result.errors))
+
+    def test_todo_rejected_case_insensitive(self):
+        broken = VALID_SAMPLE.replace(
+            "## Legacy Notes\nnone found\n",
+            "## Legacy Notes\nTodo\n"
+        )
+        result = validate(broken)
+        self.assertFalse(result.ok)
+
+    def test_real_none_found_passes(self):
+        # The sample uses 'none found' in several sections — must keep passing
+        result = validate(VALID_SAMPLE)
+        self.assertFalse(any("placeholder text" in e for e in result.errors))
+
+    def test_placeholder_in_business_logic_subsection_rejected(self):
+        broken = VALID_SAMPLE.replace(
+            "### Validation Rules\n- Input must be non-null — SampleService.validate()\n",
+            "### Validation Rules\nN/A\n"
+        )
+        result = validate(broken)
+        self.assertFalse(result.ok)
+        self.assertTrue(any("Validation Rules" in e and "placeholder" in e for e in result.errors))
+
+    def test_real_content_with_na_word_passes(self):
+        # A sentence that contains 'N/A' but isn't ONLY 'N/A' must not be flagged.
+        broken = VALID_SAMPLE.replace(
+            "## Edge Cases\n- Null input handled — SampleService.validate()\n",
+            "## Edge Cases\n- N/A inputs are rejected — SampleService.validate()\n"
+        )
+        result = validate(broken)
+        self.assertTrue(result.ok)
+
+
+class TestPerBulletCitationWarning(unittest.TestCase):
+    """Codex follow-up: section-level citation check passes if ANY bullet in
+    the section is cited. Per-bullet warning surfaces specific uncited bullets."""
+
+    def test_uncited_bullet_warns_with_preview(self):
+        # Add a second uncited bullet alongside the cited one in Core Flow
+        broken = VALID_SAMPLE.replace(
+            "### Core Flow\n1. Receive request — SampleController.get()\n2. Process — SampleService.process()\n",
+            "### Core Flow\n1. Receive request — SampleController.get()\n2. Process — SampleService.process()\n3. Reject when shutdown\n"
+        )
+        result = validate(broken)
+        self.assertTrue(result.ok,
+                        f"per-bullet check is warning-level; got errors: {result.errors}")
+        self.assertTrue(any("bullet without" in w and "Reject when shutdown" in w
+                            for w in result.warnings))
+
+    def test_all_bullets_cited_no_warning(self):
+        result = validate(VALID_SAMPLE)
+        self.assertFalse(any("bullet without" in w for w in result.warnings))
+
+    def test_table_rows_skipped(self):
+        # A bullet line that's actually a table row (starts with '|') should
+        # not be flagged for missing citation
+        broken = VALID_SAMPLE.replace(
+            "## Edge Cases\n- Null input handled — SampleService.validate()\n",
+            "## Edge Cases\n- Null input handled — SampleService.validate()\n- | this looks bullet-like but is tabular |\n"
+        )
+        result = validate(broken)
+        self.assertFalse(any("bullet without" in w and "tabular" in w
+                             for w in result.warnings))
+
+    def test_template_hint_skipped(self):
+        # Bullets like '- [Step] — ClassName' that are template hints (start
+        # with '[') should not be flagged
+        broken = VALID_SAMPLE.replace(
+            "## Edge Cases\n- Null input handled — SampleService.validate()\n",
+            "## Edge Cases\n- Null input handled — SampleService.validate()\n- [example placeholder text]\n"
+        )
+        result = validate(broken)
+        self.assertFalse(any("bullet without" in w and "example placeholder" in w
+                             for w in result.warnings))
+
+    def test_none_found_section_no_warning(self):
+        # External Dependencies is 'none found' in sample — must not fire
+        result = validate(VALID_SAMPLE)
+        self.assertFalse(any("External Dependencies" in w for w in result.warnings))
+
+
 class TestReferenceSkillsAreValid(unittest.TestCase):
     """The three hand-authored reference skills are the documented quality bar.
     They MUST validate cleanly; if a future edit breaks them, this test fires."""
