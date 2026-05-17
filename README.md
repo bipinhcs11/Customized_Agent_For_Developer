@@ -73,6 +73,8 @@ Each LLM-dependent stage has two halves: `*-emit` writes a prompt file, you past
 
 **Why this shape?** The Python tool is fully deterministic — file walking, parsing, source assembly, response application. The host AI agent does the reasoning. Nothing in this repo talks to the network; nothing requires an API key.
 
+For a visual sequence diagram of the IDE-side developer experience — from typing *"analyze this project"* through committed SKILL.md files — see [`docs/agent-invocation-flow.md`](./docs/agent-invocation-flow.md). It renders natively on GitHub.
+
 ---
 
 ## Quick start
@@ -351,7 +353,6 @@ What's in v0.3 (now):
 
 What's coming next:
 
-- **Claude skill twin** — a `skills/skill-generator/SKILL.md` so Claude Code / Cowork can invoke the whole pipeline as a single instruction
 - **Multi-repo orchestration** — config-driven runs across 50+ enterprise repos in one pass
 - **Chunk-and-merge for very large domains** — Stage 3 currently truncates domains > 24KB of source; real chunk-merge needs implementation
 - **Real Java AST parsing** — optional `javalang` dependency to replace the regex parser for edge cases (Lombok, annotation processors)
