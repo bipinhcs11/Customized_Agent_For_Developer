@@ -98,6 +98,14 @@ cd Customized_Agent_For_Developer
 # That's it.
 ```
 
+### Not sure if it'll work on your repo? Run `doctor` first
+
+```bash
+python3 -m tools.skill_generator.cli doctor /path/to/your/repo
+```
+
+A 30-second look at your repo before you commit to anything. Shows class count, detected framework, oversized files, and how long the full pipeline will take. No AI turns, nothing written to disk. See [`docs/skill-gen-doctor.md`](./docs/skill-gen-doctor.md) for an example.
+
 ### Run the pipeline
 
 Each LLM stage is two commands with a paste in between. Stage 1 (Crawl) has no LLM step — it just walks the repo.

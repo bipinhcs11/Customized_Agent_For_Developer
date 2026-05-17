@@ -44,6 +44,7 @@ from . import generate as generate_mod
 from . import link as link_mod
 from . import update as update_mod
 from . import validate as validate_mod
+from . import doctor as doctor_mod
 
 
 def _default_workdir(repo_or_index: str | Path) -> Path:
@@ -365,6 +366,14 @@ def build_parser() -> argparse.ArgumentParser:
                    help="SKILL.md file paths and/or directories (recursively scanned for SKILL.md)")
     p.set_defaults(func=_cmd_validate)
 
+    # doctor
+    p = sub.add_parser("doctor",
+                       help="30-second look at a Java repo before running the pipeline")
+    p.add_argument("path", help="Path to the Java repo to inspect")
+    p.add_argument("--json", action="store_true",
+                   help="Emit machine-readable JSON instead of the plain-English report")
+    p.set_defaults(func=_cmd_doctor)
+
     return parser
 
 
@@ -374,6 +383,19 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         print("error: no SKILL.md files found at the given paths", file=sys.stderr)
         return 1
     return validate_mod.print_report(results)
+
+
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    try:
+        report = doctor_mod.diagnose(args.path)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(doctor_mod.format_json(report))
+    else:
+        print(doctor_mod.format_human(report))
+    return 0
 
 
 def main(argv: list | None = None) -> int:
