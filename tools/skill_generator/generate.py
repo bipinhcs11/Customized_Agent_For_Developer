@@ -71,7 +71,129 @@ def _collect_source_blob(domain: dict, repo_root: Path, index: dict) -> str:
                 if content:
                     parts.append(f"--- FILE: {fp} ---\n{content}\n")
 
+    config_blob = _collect_config_pairs(domain, repo_root, index)
+    if config_blob:
+        parts.append(config_blob)
+
     return "\n".join(parts)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Config value extraction (Stage 3)
+#
+# The planner attributes config-key prefixes to each domain via the `configKeys`
+# field (e.g. ["app.file-delivery.*", "spring.datasource.*"]). The crawler's
+# index already knows which file each prefix lives in (via `config_signals`).
+# Here we close the loop: read the actual files at generate-time and extract
+# the matching key:value pairs. Without this, the AI sees that the domain has
+# config-driven behavior but cannot see what the values are.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+CONFIG_FILE_CAP = 10_000   # per-file cap for config reading
+
+
+def _collect_config_pairs(domain: dict, repo_root: Path, index: dict) -> str:
+    """Read config files relevant to the domain and extract matching key:value
+    pairs. Returns a single blob (possibly empty) suitable for appending to
+    the source blob."""
+    config_keys = domain.get("configKeys") or []
+    if not config_keys:
+        return ""
+
+    # Normalize prefixes: 'app.file-delivery.*' -> 'app.file-delivery'
+    prefixes = [k.rstrip("*").rstrip(".") for k in config_keys if k.strip()]
+    prefixes = [p for p in prefixes if p]
+    if not prefixes:
+        return ""
+
+    relevant_files: dict = {}   # file_path -> config_type
+    for cs in index.get("config_signals", []):
+        kps = cs.get("key_prefixes") or []
+        if any(_prefix_overlaps(kp, prefixes) for kp in kps):
+            relevant_files[cs["file_path"]] = cs.get("config_type", "")
+
+    parts: list = []
+    for fp in sorted(relevant_files):
+        ctype = relevant_files[fp]
+        text = _safe_read(repo_root / fp, cap=CONFIG_FILE_CAP)
+        if not text:
+            continue
+        if ctype == "yaml":
+            pairs = _extract_matching_yaml_pairs(text, prefixes)
+        else:
+            pairs = _extract_matching_properties_pairs(text, prefixes)
+        if pairs:
+            parts.append(f"--- CONFIG: {fp} ---\n" + "\n".join(pairs) + "\n")
+    return "\n".join(parts)
+
+
+def _prefix_overlaps(prefix_in_file: str, domain_prefixes: list) -> bool:
+    """Return True if a key prefix found in a file overlaps with any of the
+    domain's requested prefixes — in either direction. This is intentionally
+    forgiving so that 'spring.datasource' in a file matches both
+    'spring.datasource' and 'spring' coming from the plan, and 'datasource'
+    from the plan matches a file's 'spring.datasource' too."""
+    for dp in domain_prefixes:
+        if prefix_in_file == dp:
+            return True
+        if prefix_in_file.startswith(dp + "."):
+            return True
+        if dp.startswith(prefix_in_file + "."):
+            return True
+    return False
+
+
+def _extract_matching_properties_pairs(text: str, prefixes: list) -> list:
+    """Pull key=value or key:value lines whose key starts with any prefix.
+    Preserves the original line so values keep their formatting."""
+    matches: list = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(("#", "!")):
+            continue
+        sep_index = -1
+        for sep in ("=", ":"):
+            i = line.find(sep)
+            if i > 0 and (sep_index == -1 or i < sep_index):
+                sep_index = i
+        if sep_index <= 0:
+            continue
+        key = line[:sep_index].strip()
+        if not key:
+            continue
+        if any(key == p or key.startswith(p + ".") for p in prefixes):
+            matches.append(line)
+    return matches
+
+
+def _extract_matching_yaml_pairs(text: str, prefixes: list) -> list:
+    """Reconstruct dotted YAML paths from indentation and emit 'path: value'
+    for every leaf whose dotted path starts with any of `prefixes`. Sections
+    with no inline value (just 'key:' followed by children) are skipped at
+    the parent level — leaves carry the values."""
+    import re as _re
+    matches: list = []
+    stack: list = []   # [(indent, key)]
+    for raw_line in text.splitlines():
+        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
+            continue
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        stripped = raw_line.strip()
+        if ":" not in stripped:
+            continue
+        key_part, _, value_part = stripped.partition(":")
+        key = key_part.strip()
+        value = value_part.strip()
+        if not key or not _re.match(r"^[A-Za-z_][\w.-]*$", key):
+            continue
+        while stack and stack[-1][0] >= indent:
+            stack.pop()
+        path = ".".join(k for _, k in stack + [(indent, key)])
+        if value and any(path == p or path.startswith(p + ".") for p in prefixes):
+            matches.append(f"{path}: {value}")
+        stack.append((indent, key))
+    return matches
 
 
 def _safe_read(path: Path, cap: int) -> str:
