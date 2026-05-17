@@ -43,6 +43,7 @@ from . import plan as plan_mod
 from . import generate as generate_mod
 from . import link as link_mod
 from . import update as update_mod
+from . import validate as validate_mod
 
 
 def _default_workdir(repo_or_index: str | Path) -> Path:
@@ -152,6 +153,7 @@ def _cmd_generate_ingest(args: argparse.Namespace) -> int:
             output_dir=args.output_dir,
             force_regen=args.force,
             only_domains=args.only or None,
+            validate_schema=not args.no_validate,
         )
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
@@ -185,7 +187,10 @@ def _cmd_link_emit(args: argparse.Namespace) -> int:
 
 def _cmd_link_ingest(args: argparse.Namespace) -> int:
     try:
-        result = link_mod.ingest_response(args.response, args.skills_dir)
+        result = link_mod.ingest_response(
+            args.response, args.skills_dir,
+            validate_schema=not args.no_validate,
+        )
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
@@ -229,6 +234,7 @@ def _cmd_update_ingest(args: argparse.Namespace) -> int:
             responses_dir=args.responses_dir,
             commit=args.commit,
             feature=args.feature,
+            validate_schema=not args.no_validate,
         )
     except Exception as e:
         print(f"error: {e}", file=sys.stderr)
@@ -306,6 +312,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Overwrite existing SKILL.md files")
     p.add_argument("--only", action="append", default=[],
                    help="Only ingest this domain id (repeatable)")
+    p.add_argument("--no-validate", action="store_true",
+                   help="Skip artifact-3 schema validation (not recommended)")
     p.set_defaults(func=_cmd_generate_ingest)
 
     # link-emit
@@ -322,6 +330,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("response", help="Path to the link response file")
     p.add_argument("--skills-dir", required=True,
                    help="Skills directory (e.g., .github/skills)")
+    p.add_argument("--no-validate", action="store_true",
+                   help="Skip artifact-3 schema validation after link rewrite (not recommended)")
     p.set_defaults(func=_cmd_link_ingest)
 
     # update-emit
@@ -344,9 +354,26 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--feature", help="Apply only this feature id")
     p.add_argument("--commit", action="store_true",
                    help="git-add + commit the updated SKILL.mds (auto message)")
+    p.add_argument("--no-validate", action="store_true",
+                   help="Skip artifact-3 schema validation (not recommended)")
     p.set_defaults(func=_cmd_update_ingest)
 
+    # validate
+    p = sub.add_parser("validate",
+                       help="Validate one or more SKILL.md files against the artifact-3 contract")
+    p.add_argument("paths", nargs="+",
+                   help="SKILL.md file paths and/or directories (recursively scanned for SKILL.md)")
+    p.set_defaults(func=_cmd_validate)
+
     return parser
+
+
+def _cmd_validate(args: argparse.Namespace) -> int:
+    results = validate_mod.validate_paths(args.paths)
+    if not results:
+        print("error: no SKILL.md files found at the given paths", file=sys.stderr)
+        return 1
+    return validate_mod.print_report(results)
 
 
 def main(argv: list | None = None) -> int:

@@ -29,6 +29,7 @@ from pathlib import Path
 from .crawler import crawl
 from .prompts import PHASE_2_UPDATE_PROMPT_PREFIX, STAGE_3_GENERATE_PROMPT
 from .generate import _collect_source_blob, _strip_markdown_fence
+from .validate import validate
 
 
 def _git_changed_files(repo_root: Path, base: str = "HEAD~1", head: str = "HEAD") -> list:
@@ -185,9 +186,12 @@ def _bump_version(existing_md: str) -> tuple:
 def ingest_responses(repo_root: str | Path, *,
                      responses_dir: str | Path | None = None,
                      commit: bool = False,
-                     feature: str | None = None) -> dict:
-    """Read each per-feature response, bump version, write the refreshed
-    SKILL.md, and optionally commit."""
+                     feature: str | None = None,
+                     validate_schema: bool = True) -> dict:
+    """Read each per-feature response, bump version + last_updated, validate
+    against the artifact-3 contract, write the refreshed SKILL.md, and
+    optionally commit. With validate_schema=False, the validation gate is
+    skipped (not recommended — corrupted SKILL.mds will be written)."""
     repo_root = Path(repo_root).resolve()
     skills_dir = _resolve_skills_dir(repo_root)
     if skills_dir is None:
@@ -199,6 +203,7 @@ def ingest_responses(repo_root: str | Path, *,
     else:
         response_files = sorted(responses_dir.glob("*.md"))
 
+    today = date.today().isoformat()
     updated, failed = [], []
     for rp in response_files:
         feature_id = rp.stem
@@ -223,6 +228,26 @@ def ingest_responses(repo_root: str | Path, *,
             count=1,
             flags=re.MULTILINE,
         )
+        # Force today's date in case the AI returned a stale or missing one
+        content = re.sub(
+            r"^last_updated:\s*.*$",
+            f"last_updated: {today}",
+            content,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        if validate_schema:
+            vres = validate(content, path=str(rp))
+            for w in vres.warnings:
+                print(f"[update-ingest] {feature_id}: WARN: {w}", file=sys.stderr)
+            if not vres.ok:
+                print(f"[update-ingest] {feature_id}: validation FAILED, NOT writing — "
+                      f"fix {rp} and re-run:", file=sys.stderr)
+                for e in vres.errors:
+                    print(f"  ERROR: {e}", file=sys.stderr)
+                failed.append({"feature": feature_id, "reason": "validation failed",
+                               "errors": vres.errors})
+                continue
         skill_path.write_text(content, encoding="utf-8")
         updated.append(str(skill_path))
         print(f"[update-ingest] {feature_id}: v{old_ver} -> v{new_ver}",

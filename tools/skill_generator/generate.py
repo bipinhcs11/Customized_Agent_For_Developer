@@ -23,6 +23,7 @@ from datetime import date
 from pathlib import Path
 
 from .prompts import STAGE_3_GENERATE_PROMPT
+from .validate import validate
 
 
 MAX_CHARS_PER_CHUNK = 24_000   # ~6000 tokens × 4 chars/token; truncate above this
@@ -142,8 +143,13 @@ def ingest_responses(plan_path: str | Path, repo_root: str | Path,
                      responses_dir: str | Path | None = None,
                      output_dir: str | Path | None = None,
                      *, force_regen: bool = False,
-                     only_domains: list | None = None) -> dict:
+                     only_domains: list | None = None,
+                     validate_schema: bool = True) -> dict:
     """Read one response file per domain and write SKILL.md files.
+
+    With validate_schema=True (default), each response is checked against the
+    artifact-3 contract before being written. Failed responses are NOT written;
+    the dev must fix the response file and re-run.
 
     Returns {"written": [paths], "skipped": [...], "failed": [...]}."""
     plan = json.loads(Path(plan_path).read_text(encoding="utf-8"))
@@ -173,6 +179,19 @@ def ingest_responses(plan_path: str | Path, repo_root: str | Path,
         if not content.strip():
             failed.append({"domain": did, "reason": "response file is empty"})
             continue
+        if validate_schema:
+            vres = validate(content, path=str(response_path))
+            for w in vres.warnings:
+                print(f"[generate-ingest] [{i}] {did}: WARN: {w}", file=sys.stderr)
+            if not vres.ok:
+                print(f"[generate-ingest] [{i}] {did}: SKILL.md validation FAILED, "
+                      f"NOT writing — fix {response_path} and re-run:",
+                      file=sys.stderr)
+                for e in vres.errors:
+                    print(f"  ERROR: {e}", file=sys.stderr)
+                failed.append({"domain": did, "reason": "validation failed",
+                               "errors": vres.errors})
+                continue
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
         written.append(str(target))
