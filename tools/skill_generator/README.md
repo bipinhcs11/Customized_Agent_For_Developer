@@ -88,7 +88,7 @@ Silently skipped: `target/`, `build/`, `.git/`, `generated/`, `.mvn/`, `node_mod
 
 ```jsonc
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "scan": { "root": "...", "timestamp": "ISO-8601", "tool_version": "0.3.0" },
   "stats": {
     "java_classes": 23, "xml_files": 0, "config_files": 0,
@@ -151,6 +151,4 @@ If a project requires AST-level accuracy, the Python `javalang` library can be d
 
 ## Tool version & schema version
 
-The current tool version is `0.2.0` (as reported by `skill-gen --version`, defined in `crawler.py` as `TOOL_VERSION`). The output JSON schema version is `2` (`SCHEMA_VERSION` in the same file). If the schema changes in a backwards-incompatible way (renamed fields, removed sections), `SCHEMA_VERSION` increments so downstream consumers can branch on it.
-
-A bump to `0.3.0` to reflect the host-agent-driven refactor (PR-merged earlier) is planned but not yet applied to the constant; treat the version string as a build identifier rather than a marketing milestone.
+The current tool version is `0.3.0` (as reported by `skill-gen --version`, defined in `crawler.py` as `TOOL_VERSION`). The output JSON schema version is `2` (`SCHEMA_VERSION` in the same file). If the schema changes in a backwards-incompatible way (renamed fields, removed sections), `SCHEMA_VERSION` increments so downstream consumers can branch on it.

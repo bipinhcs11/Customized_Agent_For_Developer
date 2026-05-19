@@ -30,7 +30,7 @@ from typing import Iterable
 # Constants
 # ─────────────────────────────────────────────────────────────────────────────
 
-TOOL_VERSION = "0.2.0"
+TOOL_VERSION = "0.3.0"
 SCHEMA_VERSION = 2
 
 DEFAULT_EXCLUDE_DIRS = {
