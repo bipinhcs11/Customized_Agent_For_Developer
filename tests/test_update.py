@@ -379,5 +379,91 @@ class TestIngestResponses(unittest.TestCase):
             self.assertEqual(result["failed"], [])
 
 
+class TestIngestResponsesForceCorrections(unittest.TestCase):
+    """Regression tests for the two force-overwrite paths in ingest_responses:
+    the AI is allowed to return a wrong version number or a stale date, and
+    ingest must silently correct both."""
+
+    def _setup(self, td: str, feature_id: str = "test-feature"):
+        root = Path(td)
+        skills_dir = root / ".github" / "skills"
+        responses_dir = root / ".skill-gen" / ".update-responses"
+        skill_path = skills_dir / feature_id / "SKILL.md"
+        skill_path.parent.mkdir(parents=True, exist_ok=True)
+        responses_dir.mkdir(parents=True, exist_ok=True)
+        return root, responses_dir, skill_path
+
+    def test_ai_wrong_version_corrected_to_existing_plus_one(self):
+        """If the AI response says version: 99 but the existing skill is version: 3,
+        ingest must write version: 4, not version: 100 or version: 99."""
+        with tempfile.TemporaryDirectory() as td:
+            root, responses_dir, skill_path = self._setup(td)
+            existing = _SKILL_V2.replace("version: 2", "version: 3")
+            response = _SKILL_V2.replace("version: 2", "version: 99")
+            skill_path.write_text(existing, encoding="utf-8")
+            (responses_dir / "test-feature.md").write_text(response, encoding="utf-8")
+
+            ingest_responses(root, responses_dir=str(responses_dir),
+                             validate_schema=False)
+
+            written = skill_path.read_text(encoding="utf-8")
+            self.assertIn("version: 4", written)
+            self.assertNotIn("version: 99", written)
+
+    def test_stale_date_in_response_replaced_with_today(self):
+        """A response with a stale last_updated must be rewritten to today
+        regardless of the date the AI returned."""
+        stale_response = _SKILL_V2.replace("last_updated: 2025-01-01",
+                                           "last_updated: 2020-06-15")
+        with tempfile.TemporaryDirectory() as td:
+            root, responses_dir, skill_path = self._setup(td)
+            skill_path.write_text(_SKILL_V2, encoding="utf-8")
+            (responses_dir / "test-feature.md").write_text(stale_response,
+                                                           encoding="utf-8")
+
+            ingest_responses(root, responses_dir=str(responses_dir),
+                             validate_schema=False)
+
+            written = skill_path.read_text(encoding="utf-8")
+            self.assertNotIn("last_updated: 2020-06-15", written)
+            self.assertIn(f"last_updated: {date.today().isoformat()}", written)
+
+
+class TestIngestResponsesFeatureFilter(unittest.TestCase):
+    """The `feature=` kwarg must restrict processing to exactly one feature."""
+
+    def _setup_two_features(self, td: str):
+        root = Path(td)
+        responses_dir = root / ".skill-gen" / ".update-responses"
+        responses_dir.mkdir(parents=True)
+        for fid in ("alpha", "beta"):
+            skill_path = root / ".github" / "skills" / fid / "SKILL.md"
+            skill_path.parent.mkdir(parents=True, exist_ok=True)
+            content = _SKILL_V2.replace("test-feature", fid)
+            skill_path.write_text(content, encoding="utf-8")
+            (responses_dir / f"{fid}.md").write_text(content, encoding="utf-8")
+        return root, responses_dir
+
+    def test_feature_filter_updates_only_named_feature(self):
+        with tempfile.TemporaryDirectory() as td:
+            root, responses_dir = self._setup_two_features(td)
+            result = ingest_responses(root, responses_dir=str(responses_dir),
+                                      feature="alpha", validate_schema=False)
+
+            updated = [Path(p).parent.name for p in result["updated"]]
+            self.assertIn("alpha", updated)
+            self.assertNotIn("beta", updated)
+
+    def test_no_feature_filter_updates_all(self):
+        with tempfile.TemporaryDirectory() as td:
+            root, responses_dir = self._setup_two_features(td)
+            result = ingest_responses(root, responses_dir=str(responses_dir),
+                                      validate_schema=False)
+
+            updated = [Path(p).parent.name for p in result["updated"]]
+            self.assertIn("alpha", updated)
+            self.assertIn("beta", updated)
+
+
 if __name__ == "__main__":
     unittest.main()
