@@ -837,7 +837,7 @@ def _detect_java_version(repo_root: Path) -> str:
         except OSError:
             raw = ""
         m = re.search(
-            r"<(?:maven\.compiler\.)?(?:source|target|release)>\s*([\d.]+)\s*</",
+            r"<(?:java\.version|(?:maven\.compiler\.)?(?:source|target|release))>\s*([\d.]+)\s*</",
             raw,
         )
         if m:
