@@ -8,6 +8,8 @@ Covers:
   - The _iter_files exclude logic — specifically the bug where absolute path
     components (e.g. the parent dir being named "build") would cause all files
     to be silently skipped.
+  - _detect_java_version — regression for the missing <java.version> Spring Boot
+    property: previously only maven.compiler.source/target/release were matched.
   - crawl() end-to-end on a minimal temp repo.
 
 All tests use stdlib only (tempfile, pathlib, unittest).
@@ -17,6 +19,7 @@ import unittest
 from pathlib import Path
 
 from tools.skill_generator.crawler import (
+    _detect_java_version,
     _extract_properties_prefixes,
     _extract_yaml_prefixes,
     _import_tail_tokens,
@@ -346,6 +349,89 @@ class TestCrawlEndToEnd(unittest.TestCase):
         net_modules_after = {k for k in sys.modules if "urllib" in k or "http" in k}
         self.assertEqual(net_modules_before, net_modules_after,
                          "crawl() must not import network modules")
+
+
+class TestDetectJavaVersion(unittest.TestCase):
+    """Regression tests for _detect_java_version.
+
+    Spring Boot projects standardly declare Java version as
+    <java.version>17</java.version> inside <properties>. The original regex
+    only matched maven.compiler.source/target/release, so all Spring Boot
+    repos using the <java.version> convention reported "Unknown".
+    """
+
+    def _write_pom(self, repo: Path, content: str) -> None:
+        (repo / "pom.xml").write_text(content, encoding="utf-8")
+
+    def test_spring_boot_java_version_property(self):
+        # Regression: <java.version>17</java.version> was silently ignored.
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            self._write_pom(repo,
+                "<project><properties>"
+                "<java.version>17</java.version>"
+                "</properties></project>")
+            self.assertEqual(_detect_java_version(repo), "17")
+
+    def test_maven_compiler_source(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            self._write_pom(repo,
+                "<project><properties>"
+                "<maven.compiler.source>17</maven.compiler.source>"
+                "</properties></project>")
+            self.assertEqual(_detect_java_version(repo), "17")
+
+    def test_maven_compiler_release(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            self._write_pom(repo,
+                "<project><build><plugins><plugin><configuration>"
+                "<release>21</release>"
+                "</configuration></plugin></plugins></build></project>")
+            self.assertEqual(_detect_java_version(repo), "21")
+
+    def test_old_java_1_8_normalized(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            self._write_pom(repo,
+                "<project><properties>"
+                "<maven.compiler.source>1.8</maven.compiler.source>"
+                "</properties></project>")
+            self.assertEqual(_detect_java_version(repo), "8")
+
+    def test_spring_boot_java_version_1_8_normalized(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            self._write_pom(repo,
+                "<project><properties>"
+                "<java.version>1.8</java.version>"
+                "</properties></project>")
+            self.assertEqual(_detect_java_version(repo), "8")
+
+    def test_no_pom_returns_unknown(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.assertEqual(_detect_java_version(Path(td)), "Unknown")
+
+    def test_pom_with_no_version_info_returns_unknown(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            self._write_pom(repo, "<project><groupId>com.example</groupId></project>")
+            self.assertEqual(_detect_java_version(repo), "Unknown")
+
+    def test_gradle_jvm_target(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            (repo / "build.gradle").write_text('jvmTarget = "11"\n', encoding="utf-8")
+            self.assertEqual(_detect_java_version(repo), "11")
+
+    def test_gradle_source_compatibility(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            (repo / "build.gradle").write_text(
+                "sourceCompatibility = JavaVersion.VERSION_17\n", encoding="utf-8"
+            )
+            self.assertEqual(_detect_java_version(repo), "17")
 
 
 if __name__ == "__main__":
