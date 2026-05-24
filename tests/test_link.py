@@ -243,6 +243,19 @@ class TestApplyLinksRelatedSkillsFrontmatter(unittest.TestCase):
         )
         self.assertEqual(fm_line.count("invoice-compare"), 1)
 
+    def test_existing_real_value_overwritten(self):
+        """Regression: a second link-ingest run must overwrite an existing real
+        related_skills value, not leave it stale. Previously only placeholder
+        sentinels (none / PLACEHOLDER / [PLACEHOLDER]) were matched, so this
+        silently skipped the frontmatter update while still rewriting the body
+        table — leaving frontmatter and body inconsistent."""
+        text = _make_skill("file-delivery", related_skills_value="invoice-compare")
+        links = [{"to": "payment-method", "type": "calls", "reason": "needs payment"}]
+        result = _apply_links(text, links)
+        fm_line = next(l for l in result.splitlines() if l.startswith("related_skills:"))
+        self.assertEqual(fm_line, "related_skills: payment-method",
+                         "existing related_skills value must be replaced, not left stale")
+
 
 class TestApplyLinksRelatedSkillsTable(unittest.TestCase):
     def test_table_row_inserted(self):

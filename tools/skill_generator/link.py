@@ -118,13 +118,19 @@ def _apply_links(text: str, links: list) -> str:
     """Update frontmatter `related_skills:` and the body Related Skills table."""
     targets = [ln["to"] for ln in links]
     joined = ", ".join(sorted(set(targets)))
-    text = re.sub(
-        r"^related_skills:\s*(?:PLACEHOLDER|none|\[PLACEHOLDER\])\s*$",
-        f"related_skills: {joined}",
-        text,
-        count=1,
-        flags=re.MULTILINE,
-    )
+    # Update the frontmatter field for any existing value — not just placeholder
+    # sentinels.  Prior to this fix, a second link-ingest run (e.g., after a
+    # Phase 2 update) left the frontmatter stale while rewriting the body table,
+    # creating a schema inconsistency.  Guard against empty joined so a caller
+    # with no links doesn't blank out an existing value.
+    if joined:
+        text = re.sub(
+            r"^related_skills:\s*.*$",
+            f"related_skills: {joined}",
+            text,
+            count=1,
+            flags=re.MULTILINE,
+        )
     table_rows = "\n".join(
         f"| {ln['to']} | {ln.get('type', 'calls')} | {ln.get('reason', '')} |"
         for ln in links
