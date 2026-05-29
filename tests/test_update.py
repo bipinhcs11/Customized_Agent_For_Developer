@@ -7,6 +7,8 @@ Covers pure-function helpers:
   - _resolve_skills_dir: preference of .github/skills/ over skills/; None when absent
   - _map_files_to_features: basename-to-feature mapping; unmatched-file handling;
       multi-feature match for a shared file
+  - _git_changed_files: subprocess success, CalledProcessError fallback, and
+      empty-diff fallback — all via unittest.mock to stay hermetic
 
 Integration (ingest_responses with validate_schema=False):
   - version bumped to existing+1 and last_updated rewritten to today
@@ -16,16 +18,19 @@ Integration (ingest_responses with validate_schema=False):
   - markdown fences stripped before writing
   - no-skills-dir repo returns a top-level "reason" key
 
-All tests use stdlib only (tempfile, pathlib, datetime, unittest).
+All tests use stdlib only (tempfile, pathlib, datetime, unittest, unittest.mock).
 """
+import subprocess
 import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from tools.skill_generator.update import (
     _bump_version,
     _domain_from_skill,
+    _git_changed_files,
     _map_files_to_features,
     _resolve_skills_dir,
     ingest_responses,
@@ -463,6 +468,66 @@ class TestIngestResponsesFeatureFilter(unittest.TestCase):
             updated = [Path(p).parent.name for p in result["updated"]]
             self.assertIn("alpha", updated)
             self.assertIn("beta", updated)
+
+
+# ---------------------------------------------------------------------------
+# _git_changed_files
+# ---------------------------------------------------------------------------
+
+class TestGitChangedFiles(unittest.TestCase):
+    """These tests mock subprocess.run so no real git repo is needed.
+    The function lives in tools.skill_generator.update, so we patch the
+    subprocess reference *there*, not in the stdlib module."""
+
+    _TARGET = "tools.skill_generator.update.subprocess.run"
+
+    def test_diff_success_returns_file_list(self):
+        ok = MagicMock()
+        ok.stdout = "src/Foo.java\nsrc/Bar.java\n"
+        with patch(self._TARGET, return_value=ok):
+            files = _git_changed_files(Path("/repo"), "HEAD~1", "HEAD")
+        self.assertIn("src/Foo.java", files)
+        self.assertIn("src/Bar.java", files)
+        self.assertEqual(len(files), 2)
+
+    def test_diff_strips_blank_lines(self):
+        ok = MagicMock()
+        ok.stdout = "src/Foo.java\n\n  \nsrc/Bar.java\n"
+        with patch(self._TARGET, return_value=ok):
+            files = _git_changed_files(Path("/repo"), "HEAD~1", "HEAD")
+        self.assertEqual(files, ["src/Foo.java", "src/Bar.java"])
+
+    def test_diff_failure_falls_back_to_status(self):
+        status = MagicMock()
+        status.stdout = " M src/Foo.java\n?? src/New.java\n"
+        with patch(self._TARGET,
+                   side_effect=[subprocess.CalledProcessError(1, "git diff"), status]):
+            files = _git_changed_files(Path("/repo"), "HEAD~1", "HEAD")
+        self.assertTrue(any("Foo.java" in f for f in files))
+        self.assertTrue(any("New.java" in f for f in files))
+
+    def test_empty_diff_falls_back_to_status(self):
+        """An empty diff output (e.g. shallow clone with only one commit) must
+        trigger the git status fallback rather than returning an empty list."""
+        empty = MagicMock()
+        empty.stdout = ""
+        status = MagicMock()
+        status.stdout = " M changed.java\n"
+        with patch(self._TARGET, side_effect=[empty, status]):
+            files = _git_changed_files(Path("/repo"), "HEAD~1", "HEAD")
+        self.assertTrue(any("changed.java" in f for f in files))
+
+    def test_status_porcelain_format_parsed_correctly(self):
+        """git status --porcelain prefixes each path with a 2-char XY status
+        plus a space (3 chars total). Slicing from index 3 must give the path."""
+        status = MagicMock()
+        # XY status followed by space then path — 3 prefix chars
+        status.stdout = "?? new_feature/FooService.java\n M src/Bar.java\n"
+        with patch(self._TARGET,
+                   side_effect=[subprocess.CalledProcessError(128, "git diff"), status]):
+            files = _git_changed_files(Path("/repo"), "HEAD~1", "HEAD")
+        self.assertIn("new_feature/FooService.java", files)
+        self.assertIn("src/Bar.java", files)
 
 
 if __name__ == "__main__":
