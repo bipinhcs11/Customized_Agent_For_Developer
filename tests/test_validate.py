@@ -441,5 +441,155 @@ class TestReferenceSkillsAreValid(unittest.TestCase):
                         f"payment-method-determination/SKILL.md should validate; errors: {result.errors}")
 
 
+# ---------------------------------------------------------------------------
+# validate_paths — the function wired to the `skill-gen validate` subcommand.
+# Not covered anywhere in the existing test suite.
+# ---------------------------------------------------------------------------
+
+import io
+import tempfile
+from pathlib import Path as _Path
+
+from tools.skill_generator.validate import validate_paths, print_report
+
+
+class TestValidatePaths(unittest.TestCase):
+    """validate_paths accepts file paths and/or directories; for directories it
+    recurses for all SKILL.md files. validate_file is already covered above —
+    here we test the dispatch/collection layer."""
+
+    def _write_skill(self, base: _Path, rel: str, content: str = VALID_SAMPLE) -> _Path:
+        p = base / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+        return p
+
+    def test_explicit_valid_file_returns_single_ok_result(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = self._write_skill(_Path(td), "foo/SKILL.md")
+            results = validate_paths([str(p)])
+            self.assertEqual(len(results), 1)
+            self.assertTrue(results[0].ok)
+
+    def test_explicit_invalid_file_returns_single_error_result(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = self._write_skill(_Path(td), "foo/SKILL.md",
+                                  content="# No frontmatter here\n")
+            results = validate_paths([str(p)])
+            self.assertEqual(len(results), 1)
+            self.assertFalse(results[0].ok)
+
+    def test_nonexistent_file_returns_error_result(self):
+        results = validate_paths(["/nonexistent/path/SKILL.md"])
+        self.assertEqual(len(results), 1)
+        self.assertFalse(results[0].ok)
+        self.assertTrue(any("not found" in e for e in results[0].errors))
+
+    def test_empty_path_list_returns_empty_list(self):
+        results = validate_paths([])
+        self.assertEqual(results, [])
+
+    def test_directory_finds_all_skill_mds_recursively(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = _Path(td)
+            self._write_skill(root, "feat-a/SKILL.md")
+            self._write_skill(root, "feat-b/SKILL.md")
+            self._write_skill(root, "nested/deep/feat-c/SKILL.md")
+            results = validate_paths([str(root)])
+            self.assertEqual(len(results), 3,
+                             "three SKILL.md files should be found recursively")
+
+    def test_directory_with_no_skill_mds_returns_empty(self):
+        with tempfile.TemporaryDirectory() as td:
+            _Path(td, "some_file.txt").write_text("hello", encoding="utf-8")
+            results = validate_paths([td])
+            self.assertEqual(results, [])
+
+    def test_mix_of_file_and_directory_combined(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = _Path(td)
+            explicit = self._write_skill(root, "explicit/SKILL.md")
+            self._write_skill(root, "subdir/feat/SKILL.md")
+            results = validate_paths([str(explicit), str(root / "subdir")])
+            self.assertEqual(len(results), 2)
+
+    def test_results_have_path_attribute(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = self._write_skill(_Path(td), "x/SKILL.md")
+            results = validate_paths([str(p)])
+            self.assertIsNotNone(results[0].path,
+                                 "result.path should be set to the file path")
+
+    def test_three_reference_skill_dirs_all_ok(self):
+        """Regression: passing the three artifact-3 reference skill directories
+        to validate_paths must return three clean results. (skills/skill-generator/
+        is a Claude Agent skill spec, not an artifact-3 file, so we target the
+        three reference skill directories explicitly.)"""
+        dirs = [
+            str(REPO_ROOT / "skills" / "file-delivery"),
+            str(REPO_ROOT / "skills" / "invoice-compare"),
+            str(REPO_ROOT / "skills" / "payment-method-determination"),
+        ]
+        results = validate_paths(dirs)
+        self.assertEqual(len(results), 3,
+                         "expected exactly 3 SKILL.md results, one per directory")
+        for r in results:
+            self.assertTrue(r.ok,
+                            f"{r.path} should validate cleanly; errors: {r.errors}")
+
+
+# ---------------------------------------------------------------------------
+# print_report — returns 0 when no errors, 1 when any errors present.
+# Output is written to stdout; the return value controls CLI exit code.
+# ---------------------------------------------------------------------------
+
+class TestPrintReport(unittest.TestCase):
+    """print_report is the CLI-facing formatter for `skill-gen validate`. It
+    prints human-readable output and returns an exit-code-compatible integer."""
+
+    def _run_report(self, results) -> tuple:
+        """Capture stdout and return (return_value, printed_text)."""
+        import sys
+        buf = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = buf
+        try:
+            rc = print_report(results)
+        finally:
+            sys.stdout = old_stdout
+        return rc, buf.getvalue()
+
+    def test_all_ok_returns_zero(self):
+        results = validate_paths([str(REPO_ROOT / "skills" / "file-delivery" / "SKILL.md")])
+        rc, _ = self._run_report(results)
+        self.assertEqual(rc, 0)
+
+    def test_any_error_returns_one(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = _Path(td) / "SKILL.md"
+            p.write_text("# No frontmatter\n", encoding="utf-8")
+            results = validate_paths([str(p)])
+        rc, _ = self._run_report(results)
+        self.assertEqual(rc, 1)
+
+    def test_output_contains_summary_line(self):
+        results = validate_paths([str(REPO_ROOT / "skills" / "file-delivery" / "SKILL.md")])
+        _, out = self._run_report(results)
+        self.assertIn("validated", out)
+        self.assertIn("ok", out)
+
+    def test_empty_results_returns_zero(self):
+        rc, _ = self._run_report([])
+        self.assertEqual(rc, 0)
+
+    def test_error_count_in_summary(self):
+        with tempfile.TemporaryDirectory() as td:
+            p = _Path(td) / "SKILL.md"
+            p.write_text("# No frontmatter\n", encoding="utf-8")
+            results = validate_paths([str(p)])
+        _, out = self._run_report(results)
+        self.assertIn("error", out.lower())
+
+
 if __name__ == "__main__":
     unittest.main()
