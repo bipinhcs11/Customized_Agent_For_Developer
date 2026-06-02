@@ -37,7 +37,10 @@ def _collect_source_blob(domain: dict, repo_root: Path, index: dict) -> str:
     domain. Cap each individual file at 40KB to avoid one runaway file eating
     the whole budget."""
     parts: list[str] = []
-    domain_classes = {c.split(".")[-1] for c in (domain.get("classes") or [])}
+    # sorted() makes file order deterministic across Python invocations.
+    # Without it, PYTHONHASHSEED randomises set iteration so domains near the
+    # 24KB truncation boundary include different files on different runs.
+    domain_classes = sorted({c.split(".")[-1] for c in (domain.get("classes") or [])})
 
     java_by_class: dict = {}
     for jc in index.get("java_classes", []):

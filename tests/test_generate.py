@@ -398,5 +398,57 @@ class TestCollectSourceBlobIncludesConfig(unittest.TestCase):
             self.assertIn("app.foo.enabled: true", blob)
 
 
+class TestCollectSourceBlobOrdering(unittest.TestCase):
+    """Regression: domain_classes was a set comprehension, so PYTHONHASHSEED
+    randomised which file appeared first in the source blob. For domains near
+    the 24KB truncation boundary this caused different files to be
+    included/excluded on different runs. The fix uses sorted() to guarantee
+    alphabetical ordering by class name."""
+
+    def _make_three_class_repo(self, td: str) -> tuple:
+        repo = Path(td)
+        (repo / "src").mkdir()
+        for name in ("ZebraService", "AppleService", "MangoService"):
+            (repo / "src" / f"{name}.java").write_text(
+                f"class {name} {{}}", encoding="utf-8"
+            )
+        domain = {
+            "id": "x",
+            "classes": ["ZebraService", "AppleService", "MangoService"],
+        }
+        index = {
+            "java_classes": [
+                {"class_name": "ZebraService", "file_path": "src/ZebraService.java"},
+                {"class_name": "AppleService", "file_path": "src/AppleService.java"},
+                {"class_name": "MangoService", "file_path": "src/MangoService.java"},
+            ],
+            "xml_signals": [], "config_signals": [],
+            "sql_signals": [], "shell_signals": [],
+        }
+        return repo, domain, index
+
+    def test_files_appear_in_sorted_class_name_order(self):
+        """Files must appear in alphabetical class-name order in the blob."""
+        with tempfile.TemporaryDirectory() as td:
+            repo, domain, index = self._make_three_class_repo(td)
+            blob = _collect_source_blob(domain, repo, index)
+            apple_pos = blob.find("AppleService")
+            mango_pos = blob.find("MangoService")
+            zebra_pos = blob.find("ZebraService")
+            self.assertLess(apple_pos, mango_pos,
+                            "AppleService must appear before MangoService")
+            self.assertLess(mango_pos, zebra_pos,
+                            "MangoService must appear before ZebraService")
+
+    def test_repeated_calls_produce_identical_blobs(self):
+        """Two calls with the same inputs must produce byte-identical output."""
+        with tempfile.TemporaryDirectory() as td:
+            repo, domain, index = self._make_three_class_repo(td)
+            blob1 = _collect_source_blob(domain, repo, index)
+            blob2 = _collect_source_blob(domain, repo, index)
+            self.assertEqual(blob1, blob2,
+                             "source blob must be identical across multiple calls")
+
+
 if __name__ == "__main__":
     unittest.main()
