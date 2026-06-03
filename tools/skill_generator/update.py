@@ -99,7 +99,7 @@ def _domain_from_skill(skill_md: str, feature_id: str) -> dict:
         "id": feature_id,
         "name": feature_id,
         "description": "",
-        "classes": list(classes),
+        "classes": sorted(classes),
         "xmlSources": [f"{x}: from prior skill" for x in xml_files],
         "sqlSources": [f"{s}: from prior skill" for s in sql_files],
         "shellSources": [f"{s}: from prior skill" for s in sh_files],
