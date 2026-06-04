@@ -2,11 +2,13 @@
 Smoke tests for tools.skill_generator.update.
 
 Covers pure-function helpers:
-  - _bump_version: version parsing from frontmatter; fallback when field absent
-  - _domain_from_skill: Java class / XML / SQL / shell name extraction
+  - _bump_version: version parsing from frontmatter; fallback when field absent;
+      version: 0 edge case
+  - _domain_from_skill: Java class / XML / SQL / shell name extraction;
+      lowercase class names not extracted; no duplicates
   - _resolve_skills_dir: preference of .github/skills/ over skills/; None when absent
   - _map_files_to_features: basename-to-feature mapping; unmatched-file handling;
-      multi-feature match for a shared file
+      multi-feature match for a shared file; XML file match; empty changed list
   - _git_changed_files: subprocess success, CalledProcessError fallback, and
       empty-diff fallback — all via unittest.mock to stay hermetic
 
@@ -20,6 +22,8 @@ Integration (ingest_responses with validate_schema=False):
 
 All tests use stdlib only (tempfile, pathlib, datetime, unittest, unittest.mock).
 """
+from __future__ import annotations
+
 import subprocess
 import tempfile
 import unittest
@@ -63,12 +67,22 @@ class TestBumpVersion(unittest.TestCase):
         self.assertEqual(old, 0)
         self.assertEqual(new, 1)
 
+    def test_high_version_number(self):
+        old, new = _bump_version("---\nversion: 99\n---\n")
+        self.assertEqual(old, 99)
+        self.assertEqual(new, 100)
+
     def test_first_occurrence_wins_over_later_body_mention(self):
         # re.search returns the first MULTILINE match, so frontmatter wins.
         md = "---\nversion: 5\n---\nSome text about version: 99\n"
         old, new = _bump_version(md)
         self.assertEqual(old, 5)
         self.assertEqual(new, 6)
+
+    def test_returns_tuple_of_two(self):
+        result = _bump_version("---\nversion: 1\n---\n")
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(len(result), 2)
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +109,18 @@ class TestDomainFromSkill(unittest.TestCase):
         self.assertIn("FileDeliveryService", d["classes"])
         self.assertIn("FileDeliveryController", d["classes"])
 
+    def test_lowercase_class_not_extracted(self):
+        # Only uppercase-starting class names are expected Java class refs.
+        md = "The helper.java file is a utility.\n"
+        d = _domain_from_skill(md, "feat")
+        self.assertEqual(d["classes"], [])
+
+    def test_no_duplicate_classes(self):
+        # The same class name mentioned twice must not appear twice in the list.
+        md = "FooService.java is the service.\nFooService.java has a bug.\n"
+        d = _domain_from_skill(md, "foo")
+        self.assertEqual(d["classes"].count("FooService"), 1)
+
     def test_xml_sources_extracted_with_suffix_marker(self):
         md = "Action mappings in struts-config.xml are authoritative.\n"
         d = _domain_from_skill(md, "fd")
@@ -113,12 +139,6 @@ class TestDomainFromSkill(unittest.TestCase):
     def test_empty_text_yields_empty_classes(self):
         d = _domain_from_skill("no java here", "empty")
         self.assertEqual(d["classes"], [])
-
-    def test_no_duplicate_classes(self):
-        # The same class name mentioned twice should not be counted twice.
-        md = "FooService.java is the service.\nFooService.java has a bug.\n"
-        d = _domain_from_skill(md, "foo")
-        self.assertEqual(d["classes"].count("FooService"), 1)
 
 
 # ---------------------------------------------------------------------------
@@ -193,12 +213,6 @@ class TestMapFilesToFeatures(unittest.TestCase):
             self.assertIn("feature-a", result)
             self.assertIn("feature-b", result)
 
-    def test_empty_changed_files_gives_empty_result(self):
-        with tempfile.TemporaryDirectory() as td:
-            skills = Path(td)
-            self._write_skill(skills, "feature-a", "SomeClass.java\n")
-            self.assertEqual(_map_files_to_features([], skills), {})
-
     def test_xml_file_matched_by_basename(self):
         with tempfile.TemporaryDirectory() as td:
             skills = Path(td)
@@ -208,6 +222,12 @@ class TestMapFilesToFeatures(unittest.TestCase):
                 ["WEB-INF/struts-config.xml"], skills
             )
             self.assertIn("struts-app", result)
+
+    def test_empty_changed_files_gives_empty_result(self):
+        with tempfile.TemporaryDirectory() as td:
+            skills = Path(td)
+            self._write_skill(skills, "feature-a", "SomeClass.java\n")
+            self.assertEqual(_map_files_to_features([], skills), {})
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +392,6 @@ class TestIngestResponses(unittest.TestCase):
             for feature in ("alpha", "beta"):
                 skill_path = root / ".github" / "skills" / feature / "SKILL.md"
                 skill_path.parent.mkdir(parents=True, exist_ok=True)
-                # Give each feature a distinct version so bumps are traceable.
                 content = _SKILL_V2.replace("test-feature", feature)
                 skill_path.write_text(content, encoding="utf-8")
                 (responses_dir / f"{feature}.md").write_text(content, encoding="utf-8")
