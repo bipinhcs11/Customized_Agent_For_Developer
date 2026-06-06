@@ -130,6 +130,27 @@ class TestExtractPropertiesPrefixes(unittest.TestCase):
     def test_empty(self):
         self.assertEqual(_extract_properties_prefixes(""), [])
 
+    def test_colon_before_equals_uses_earliest_separator(self):
+        # Java Properties spec: key ends at the first '=' or ':'.
+        # Old code tried '=' before ':' and produced 'log4j:rootCategory'
+        # instead of the correct prefix 'log4j'.
+        text = "log4j:rootCategory=DEBUG, stdout\n"
+        result = _extract_properties_prefixes(text)
+        self.assertIn("log4j", result)
+        self.assertNotIn("log4j:rootCategory", result)
+
+    def test_equals_before_colon_still_works(self):
+        # Normal case: '=' comes first in 'key=value:with:colons'.
+        text = "spring.datasource.url=jdbc:postgresql://host:5432/db\n"
+        result = _extract_properties_prefixes(text)
+        self.assertIn("spring.datasource", result)
+
+    def test_colon_separator_only(self):
+        # Some legacy files use ':' as the sole separator.
+        text = "server.port: 8080\n"
+        result = _extract_properties_prefixes(text)
+        self.assertIn("server.port", result)
+
 
 class TestExtractYamlPrefixes(unittest.TestCase):
     def test_basic(self):

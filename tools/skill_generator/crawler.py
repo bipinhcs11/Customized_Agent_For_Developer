@@ -537,13 +537,16 @@ def _extract_properties_prefixes(text: str) -> list:
         line = line.strip()
         if not line or line.startswith("#") or line.startswith("!"):
             continue
-        # key=value or key:value
+        # key=value or key:value — find the FIRST separator (Java Properties spec:
+        # the key ends at the first unescaped '=', ':', or whitespace).
+        sep_index = -1
         for sep in ("=", ":"):
-            if sep in line:
-                key = line.split(sep, 1)[0].strip()
-                break
-        else:
+            i = line.find(sep)
+            if i > 0 and (sep_index == -1 or i < sep_index):
+                sep_index = i
+        if sep_index < 0:
             continue
+        key = line[:sep_index].strip()
         if not key:
             continue
         top = key.split(".", 1)[0]
