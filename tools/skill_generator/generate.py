@@ -172,7 +172,6 @@ def _extract_matching_yaml_pairs(text: str, prefixes: list) -> list:
     for every leaf whose dotted path starts with any of `prefixes`. Sections
     with no inline value (just 'key:' followed by children) are skipped at
     the parent level — leaves carry the values."""
-    import re as _re
     matches: list = []
     stack: list = []   # [(indent, key)]
     for raw_line in text.splitlines():
@@ -185,7 +184,7 @@ def _extract_matching_yaml_pairs(text: str, prefixes: list) -> list:
         key_part, _, value_part = stripped.partition(":")
         key = key_part.strip()
         value = value_part.strip()
-        if not key or not _re.match(r"^[A-Za-z_][\w.-]*$", key):
+        if not key or not re.match(r"^[A-Za-z_][\w.-]*$", key):
             continue
         while stack and stack[-1][0] >= indent:
             stack.pop()
