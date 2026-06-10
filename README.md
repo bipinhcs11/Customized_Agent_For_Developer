@@ -110,13 +110,17 @@ The recommended operating model is centralized: repo owners or feature leads spe
 ```bash
 git clone https://github.com/bipinhcs11/Customized_Agent_For_Developer.git
 cd Customized_Agent_For_Developer
+chmod +x skill-gen   # optional: lets you run ./skill-gen instead of the longer python3 -m form
 # That's it.
 ```
+
+Every command below can be run either as `python3 -m tools.skill_generator.cli <subcommand> ...` or, after the `chmod +x` above, as `./skill-gen <subcommand> ...` — both forms are equivalent, and the shorter form matches the "Next step" hints the tool itself prints.
 
 ### Not sure if it'll work on your repo? Run `doctor` first
 
 ```bash
 python3 -m tools.skill_generator.cli doctor /path/to/your/repo
+# or: ./skill-gen doctor /path/to/your/repo
 ```
 
 A 30-second look at your repo before you commit to anything. Shows class count, detected framework, oversized files, and how long the full pipeline will take. No AI turns, nothing written to disk. See [`docs/skill-gen-doctor.md`](./docs/skill-gen-doctor.md) for an example.
