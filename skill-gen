@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""Thin executable wrapper around the skill-gen CLI.
+
+The tool's own "Next step" hints (and `skill-gen doctor`'s suggested
+commands) are written as `skill-gen <subcommand> ...`, but `skill-gen` isn't
+on PATH after a plain `git clone` — those commands have to be mentally
+translated to `python3 -m tools.skill_generator.cli <subcommand> ...`. This
+wrapper makes the printed commands runnable as written:
+
+    ./skill-gen crawl . --output .skill-gen/.index.json
+    ./skill-gen doctor .
+
+Stdlib-only, no installation step required.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from tools.skill_generator.cli import main
+
+if __name__ == "__main__":
+    sys.exit(main())
