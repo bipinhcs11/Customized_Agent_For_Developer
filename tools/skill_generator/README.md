@@ -21,6 +21,8 @@ Python 3.10+ (standard library only — no third-party dependencies). Modules us
 | `link-ingest` | Stage 4 — apply links to each SKILL.md's frontmatter + body. |
 | `update-emit` | Phase 2 — write update prompts for features affected by `git diff`. |
 | `update-ingest` | Phase 2 — apply per-feature responses; bump version; optionally commit. |
+| `validate` | Check one or more SKILL.md files (or directories) against the artifact-3 contract. |
+| `doctor` | 30-second look at a Java repo before running the pipeline — no AI turns, nothing written to disk. |
 
 ## End-to-end run (with paste steps in between)
 
