@@ -287,6 +287,8 @@ Compare to the alternative without skills: a developer asks 5 feature questions 
 │       ├── generate.py                ← Stage 3 (per-domain emit / ingest)
 │       ├── link.py                    ← Stage 4 (emit_prompt / ingest_response)
 │       ├── update.py                  ← Phase 2 incremental updater
+│       ├── validate.py                ← artifact-3 contract checker (used by ingest + `skill-gen validate`)
+│       ├── doctor.py                  ← `skill-gen doctor` — pre-flight repo report
 │       └── README.md                  ← Internal module docs
 │
 ├── skills/                            ← Reference skills (the quality bar)
