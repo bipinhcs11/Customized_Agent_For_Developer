@@ -37,7 +37,7 @@ The repo also contains the Phase-2 updater that keeps generated skills current a
 | Invoice Compare (reference) | `skills/invoice-compare/SKILL.md` | Present | "invoice compare", "InvoiceCompare" |
 | Payment Method Determination (reference) | `skills/payment-method-determination/SKILL.md` | Present | "payment method", "PaymentMethodDetermination" |
 | Skill Generator | `skills/skill-generator/SKILL.md` | Present | "analyze this project/repo/module", "generate skills for this repo", "scan Java repo", "create SKILL.md files" |
-| Skill Updater | `skills/skill-updater/SKILL.md` | To be built | "update skills", "refresh skill", "skill out of date" |
+| Skill Updater | `skills/skill-updater/SKILL.md` | Present | "update skills", "refresh skill", "skill out of date" |
 
 ---
 
