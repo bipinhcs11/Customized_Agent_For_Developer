@@ -760,6 +760,7 @@ def parse_shell_file(path: Path, repo_root: Path) -> tuple:
 
 def _iter_files(repo_root: Path, extra_excludes: set) -> Iterable:
     excludes = DEFAULT_EXCLUDE_DIRS | set(extra_excludes)
+    candidates = []
     for path in repo_root.rglob("*"):
         # Check only the parts *inside* the repo root — using path.parts (the
         # absolute path) would silently skip everything if the repo itself is
@@ -771,7 +772,13 @@ def _iter_files(repo_root: Path, extra_excludes: set) -> Iterable:
             continue
         if path.suffix.lower() in BINARY_EXTENSIONS:
             continue
-        yield path
+        candidates.append(path)
+    # rglob's order depends on filesystem/OS directory-entry ordering, which
+    # varies across machines and checkouts. Sort by relative path so the
+    # crawl index — and everything downstream (plan/generate prompts) — is
+    # deterministic for the same repo contents.
+    candidates.sort(key=lambda p: p.relative_to(repo_root).as_posix())
+    return candidates
 
 
 def _detect_framework(java_classes: list, xml_signals: list) -> str:

@@ -301,6 +301,39 @@ class TestIterFilesExcludeByRelativeParts(unittest.TestCase):
                              "Files inside the repo's own build/ dir should be excluded")
 
 
+class TestIterFilesDeterministicOrder(unittest.TestCase):
+    """_iter_files must return files sorted by relative path, regardless of
+    the order the underlying filesystem yields directory entries. Without
+    this, the crawl index (and everything downstream — plan/generate prompts)
+    would vary between machines/checkouts of the same repo content."""
+
+    def test_files_sorted_by_relative_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            (repo_root / "src").mkdir()
+            # Create files in reverse-alphabetical order so creation order
+            # cannot accidentally match the expected sorted order.
+            (repo_root / "Zebra.java").write_text("class Zebra {}\n")
+            (repo_root / "src" / "Beta.java").write_text("class Beta {}\n")
+            (repo_root / "Alpha.java").write_text("class Alpha {}\n")
+
+            files = list(_iter_files(repo_root, set()))
+            rel_paths = [f.relative_to(repo_root).as_posix() for f in files]
+            self.assertEqual(rel_paths, sorted(rel_paths))
+            self.assertEqual(rel_paths, ["Alpha.java", "Zebra.java", "src/Beta.java"])
+
+    def test_crawl_java_classes_sorted_by_file_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            (repo_root / "Zebra.java").write_text("public class Zebra {}\n")
+            (repo_root / "Alpha.java").write_text("public class Alpha {}\n")
+            (repo_root / "Mango.java").write_text("public class Mango {}\n")
+
+            index = crawl(repo_root)
+            file_paths = [jc.file_path for jc in index.java_classes]
+            self.assertEqual(file_paths, sorted(file_paths))
+
+
 class TestCrawlEndToEnd(unittest.TestCase):
     def test_minimal_repo(self):
         with tempfile.TemporaryDirectory() as td:
