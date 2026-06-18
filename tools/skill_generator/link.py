@@ -145,6 +145,39 @@ def _apply_links(text: str, links: list) -> str:
     return text
 
 
+def _extract_json_objects(text: str) -> list:
+    """Return every top-level, brace-balanced `{...}` substring in `text`,
+    in order of appearance. Brace counting ignores braces inside string
+    literals so embedded JSON-like example text in prose doesn't desync the
+    balance."""
+    objects = []
+    depth = 0
+    start = None
+    in_string = False
+    escape = False
+    for i, ch in enumerate(text):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    objects.append(text[start:i + 1])
+    return objects
+
+
 def _parse_links_json(raw: str) -> dict:
     raw = raw.strip()
     if raw.startswith("```"):
@@ -154,10 +187,29 @@ def _parse_links_json(raw: str) -> dict:
         if lines and lines[-1].startswith("```"):
             lines = lines[:-1]
         raw = "\n".join(lines)
-    match = re.search(r"\{.*\}", raw, re.DOTALL)
-    if not match:
+    objects = _extract_json_objects(raw)
+    if not objects:
         raise LinkParseError(f"No JSON in link response: {raw[:500]}")
-    try:
-        return json.loads(match.group(0))
-    except json.JSONDecodeError as e:
-        raise LinkParseError(f"Link response was not valid JSON: {e}\n\n{raw[:500]}")
+    # The model sometimes restates the JSON schema (with placeholder values)
+    # before giving the real answer, so a naive first-brace-to-last-brace
+    # match can splice two unrelated objects together. Prefer the last
+    # candidate that both parses and has a "links" key — the real answer
+    # typically comes after any restated example.
+    last_error = None
+    for candidate in reversed(objects):
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError as e:
+            last_error = e
+            continue
+        if isinstance(parsed, dict) and "links" in parsed:
+            return parsed
+    # No candidate had a "links" key; fall back to the last one that at
+    # least parsed, so a genuinely malformed-but-singular response still
+    # raises a clear error instead of silently picking the wrong object.
+    for candidate in reversed(objects):
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError as e:
+            last_error = e
+    raise LinkParseError(f"Link response was not valid JSON: {last_error}\n\n{raw[:500]}")

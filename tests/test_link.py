@@ -183,6 +183,40 @@ class TestParseLinksJsonEmbeddedInProse(unittest.TestCase):
         self.assertEqual(result["links"][0]["reason"], "triggers invoice check")
 
 
+class TestParseLinksJsonMultipleObjects(unittest.TestCase):
+    """A naive first-brace-to-last-brace regex would splice these two
+    objects into one malformed blob. The model restating the schema (with
+    a placeholder object) before the real answer is a real-world pattern
+    despite the prompt's "no markdown, no explanation" instruction."""
+
+    def test_schema_example_before_real_answer(self):
+        raw = (
+            "The format is:\n"
+            '{"links": [{"from": "domain-id", "to": "domain-id", '
+            '"reason": "...", "type": "calls"}]}\n\n'
+            "Here is my answer:\n" + json.dumps(_MINIMAL_LINKS)
+        )
+        result = _parse_links_json(raw)
+        self.assertEqual(result["links"][0]["from"], "file-delivery")
+        self.assertEqual(result["links"][0]["to"], "invoice-compare")
+
+    def test_unrelated_object_before_links_object(self):
+        raw = (
+            '{"note": "analyzing 2 domains"}\n\n' + json.dumps(_MINIMAL_LINKS)
+        )
+        result = _parse_links_json(raw)
+        self.assertEqual(len(result["links"]), 1)
+
+    def test_quoted_braces_in_reason_do_not_break_balance(self):
+        links = {"links": [
+            {"from": "a", "to": "b", "type": "calls",
+             "reason": 'calls b.process() with payload like {"x": 1}'},
+        ]}
+        result = _parse_links_json(json.dumps(links))
+        self.assertEqual(result["links"][0]["reason"],
+                          'calls b.process() with payload like {"x": 1}')
+
+
 class TestParseLinksJsonErrors(unittest.TestCase):
     def test_no_json_raises(self):
         with self.assertRaises(LinkParseError):
