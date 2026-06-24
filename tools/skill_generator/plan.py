@@ -20,7 +20,6 @@ Usage (from CLI):
 from __future__ import annotations
 
 import json
-import re
 import sys
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
@@ -146,6 +145,39 @@ def ingest_response(response_path: str | Path,
     return plan
 
 
+def _extract_json_objects(text: str) -> list:
+    """Return every top-level, brace-balanced `{...}` substring in `text`,
+    in order of appearance. Brace counting ignores braces inside string
+    literals so embedded JSON-like example text in prose doesn't desync the
+    balance."""
+    objects = []
+    depth = 0
+    start = None
+    in_string = False
+    escape = False
+    for i, ch in enumerate(text):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    objects.append(text[start:i + 1])
+    return objects
+
+
 def _parse_plan_json(raw: str) -> dict:
     """Tolerant JSON parser — host agents sometimes wrap JSON in code fences."""
     raw = raw.strip()
@@ -156,10 +188,29 @@ def _parse_plan_json(raw: str) -> dict:
         if lines and lines[-1].startswith("```"):
             lines = lines[:-1]
         raw = "\n".join(lines)
-    match = re.search(r"\{.*\}", raw, re.DOTALL)
-    if not match:
+    objects = _extract_json_objects(raw)
+    if not objects:
         raise PlanParseError(f"No JSON object found in response: {raw[:500]}")
-    try:
-        return json.loads(match.group(0))
-    except json.JSONDecodeError as e:
-        raise PlanParseError(f"Plan response was not valid JSON: {e}\n\n{raw[:1000]}")
+    # The Stage-2 prompt embeds a placeholder example schema right above the
+    # instruction to "respond ONLY with this JSON" — models sometimes restate
+    # it before the real answer. A naive first-brace-to-last-brace match would
+    # splice the example and the real object together. Prefer the last
+    # candidate that both parses and has a "domains" key.
+    last_error = None
+    for candidate in reversed(objects):
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError as e:
+            last_error = e
+            continue
+        if isinstance(parsed, dict) and "domains" in parsed:
+            return parsed
+    # No candidate had a "domains" key; fall back to the last one that at
+    # least parsed, so a genuinely malformed-but-singular response still
+    # raises a clear error instead of silently picking the wrong object.
+    for candidate in reversed(objects):
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError as e:
+            last_error = e
+    raise PlanParseError(f"Plan response was not valid JSON: {last_error}\n\n{raw[:1000]}")

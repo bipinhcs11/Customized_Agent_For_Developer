@@ -108,6 +108,35 @@ class TestParsePlanJsonEmbeddedInProse(unittest.TestCase):
         self.assertEqual(len(result["domains"]), 1)
 
 
+class TestParsePlanJsonMultipleObjects(unittest.TestCase):
+    """A naive first-brace-to-last-brace regex would splice these two objects
+    into one malformed blob. The Stage-2 prompt embeds a placeholder example
+    schema right above "Respond ONLY with this JSON" — models restating it
+    before the real answer is a real-world pattern despite that instruction."""
+
+    def test_schema_example_before_real_answer(self):
+        raw = (
+            "Respond ONLY with this JSON:\n"
+            '{"projectType": "...", "domains": [{"id": "kebab-case-id"}]}\n\n'
+            "Here is my answer:\n" + json.dumps(_MINIMAL_PLAN)
+        )
+        result = _parse_plan_json(raw)
+        self.assertEqual(result["framework"], "Spring Boot")
+        self.assertEqual(result["domains"][0]["id"], "file-delivery")
+
+    def test_unrelated_object_before_plan_object(self):
+        raw = '{"note": "analyzing the index"}\n\n' + json.dumps(_MINIMAL_PLAN)
+        result = _parse_plan_json(raw)
+        self.assertEqual(len(result["domains"]), 1)
+
+    def test_quoted_braces_in_description_do_not_break_balance(self):
+        plan = json.loads(json.dumps(_MINIMAL_PLAN))
+        plan["domains"][0]["description"] = 'Calls process() with payload like {"x": 1}'
+        result = _parse_plan_json(json.dumps(plan))
+        self.assertEqual(result["domains"][0]["description"],
+                          'Calls process() with payload like {"x": 1}')
+
+
 class TestParsePlanJsonErrors(unittest.TestCase):
     def test_no_json_raises(self):
         with self.assertRaises(PlanParseError):
