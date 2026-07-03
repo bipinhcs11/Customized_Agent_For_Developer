@@ -130,6 +130,22 @@ class TestExtractPropertiesPrefixes(unittest.TestCase):
     def test_empty(self):
         self.assertEqual(_extract_properties_prefixes(""), [])
 
+    def test_all_prefixes_returned_not_just_interest_list(self):
+        """Prefixes outside CONFIG_PREFIXES_OF_INTEREST are still returned.
+        Filtering by domain configKeys happens downstream (in generate.py), not here."""
+        text = (
+            "custom.my-feature.setting=true\n"
+            "company.internal.flag=1\n"
+        )
+        result = _extract_properties_prefixes(text)
+        self.assertIn("custom.my-feature", result)
+        self.assertIn("company.internal", result)
+
+    def test_single_segment_key_kept_as_is(self):
+        text = "debug=true\n"
+        result = _extract_properties_prefixes(text)
+        self.assertIn("debug", result)
+
 
 class TestExtractYamlPrefixes(unittest.TestCase):
     def test_basic(self):
