@@ -9,7 +9,7 @@ each response and writes the canonical SKILL.md.
 
 Usage (from CLI):
     skill-gen generate-emit <plan.json> --repo <repo-root> \\
-        --output-dir .skill-gen/.generate-prompts/
+        --prompts-dir .skill-gen/.generate-prompts/
     # developer feeds each prompt to their AI session,
     # saves each response as .skill-gen/.generate-responses/<domain-id>.md
     skill-gen generate-ingest <plan.json> --repo <repo-root>
