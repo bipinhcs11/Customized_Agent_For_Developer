@@ -201,6 +201,10 @@ def ingest_responses(repo_root: str | Path, *,
     if feature:
         response_files = [responses_dir / f"{feature}.md"]
     else:
+        if not responses_dir.exists():
+            print(f"[update-ingest] responses dir not found: {responses_dir}",
+                  file=sys.stderr)
+            return {"updated": [], "failed": [], "reason": "responses dir not found"}
         response_files = sorted(responses_dir.glob("*.md"))
 
     today = date.today().isoformat()
