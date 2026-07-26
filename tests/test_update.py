@@ -20,6 +20,7 @@ from tools.skill_generator.update import (
     _bump_version,
     _domain_from_skill,
     _map_files_to_features,
+    _resolve_skills_dir,
     ingest_responses,
 )
 
@@ -298,6 +299,98 @@ class TestIngestResponses(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             result = ingest_responses(Path(td), commit=False, validate_schema=False)
             self.assertEqual(result.get("updated", []), [])
+
+    def test_fenced_response_fence_stripped(self):
+        # AI sometimes wraps the SKILL.md in a markdown fence; ingest must
+        # strip it so the written file starts with "---\n".
+        with tempfile.TemporaryDirectory() as td:
+            _, responses_dir, skill_path = self._setup(td)
+            inner = self._RESPONSE.replace("version: 99", "version: 1")
+            (responses_dir / "order-management.md").write_text(
+                f"```markdown\n{inner}\n```", encoding="utf-8"
+            )
+            result = ingest_responses(
+                Path(td), responses_dir=responses_dir,
+                commit=False, validate_schema=False,
+            )
+            self.assertFalse(
+                result["failed"],
+                f"Fence stripping should succeed; got failures: {result['failed']}",
+            )
+            written = skill_path.read_text(encoding="utf-8")
+            self.assertNotIn("```", written)
+
+    def test_feature_flag_restricts_to_one_feature(self):
+        # When --feature is passed only that feature's response is consumed;
+        # sibling response files must be ignored.
+        with tempfile.TemporaryDirectory() as td:
+            skills_dir = Path(td) / ".github" / "skills"
+            responses_dir = Path(td) / ".skill-gen" / ".update-responses"
+            responses_dir.mkdir(parents=True, exist_ok=True)
+            for fid in ("alpha", "beta"):
+                sp = skills_dir / fid / "SKILL.md"
+                sp.parent.mkdir(parents=True, exist_ok=True)
+                sp.write_text(
+                    self._RESPONSE.replace("order-management", fid)
+                                  .replace("version: 99", "version: 1"),
+                    encoding="utf-8",
+                )
+                (responses_dir / f"{fid}.md").write_text(
+                    self._RESPONSE.replace("order-management", fid),
+                    encoding="utf-8",
+                )
+            result = ingest_responses(
+                Path(td), responses_dir=responses_dir,
+                feature="alpha", commit=False, validate_schema=False,
+            )
+            updated_names = [Path(p).parent.name for p in result["updated"]]
+            self.assertIn("alpha", updated_names)
+            self.assertNotIn("beta", updated_names)
+
+    def test_missing_skill_md_reported_as_failed(self):
+        # If the skills/ directory exists but has no subdir for the feature,
+        # the feature should land in "failed" with reason "skill not found".
+        with tempfile.TemporaryDirectory() as td:
+            (Path(td) / ".github" / "skills").mkdir(parents=True)
+            responses_dir = Path(td) / ".skill-gen" / ".update-responses"
+            responses_dir.mkdir(parents=True)
+            (responses_dir / "ghost.md").write_text(self._RESPONSE, encoding="utf-8")
+            result = ingest_responses(
+                Path(td), responses_dir=responses_dir,
+                commit=False, validate_schema=False,
+            )
+            reasons = [f["reason"] for f in result["failed"]]
+            self.assertIn("skill not found", reasons)
+
+
+class TestResolveSkillsDir(unittest.TestCase):
+    def test_github_skills_dir_found(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td) / "myrepo"
+            expected = repo / ".github" / "skills"
+            expected.mkdir(parents=True)
+            self.assertEqual(_resolve_skills_dir(repo), expected)
+
+    def test_plain_skills_dir_found_when_no_github_dir(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td) / "myrepo"
+            expected = repo / "skills"
+            expected.mkdir(parents=True)
+            self.assertEqual(_resolve_skills_dir(repo), expected)
+
+    def test_github_skills_preferred_over_plain_skills(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td) / "myrepo"
+            (repo / ".github" / "skills").mkdir(parents=True)
+            (repo / "skills").mkdir(parents=True)
+            result = _resolve_skills_dir(repo)
+            self.assertEqual(result, repo / ".github" / "skills")
+
+    def test_neither_dir_exists_returns_none(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td) / "no-skills-here"
+            repo.mkdir()
+            self.assertIsNone(_resolve_skills_dir(repo))
 
 
 if __name__ == "__main__":
