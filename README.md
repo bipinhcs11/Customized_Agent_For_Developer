@@ -287,6 +287,8 @@ Compare to the alternative without skills: a developer asks 5 feature questions 
 │       ├── generate.py                ← Stage 3 (per-domain emit / ingest)
 │       ├── link.py                    ← Stage 4 (emit_prompt / ingest_response)
 │       ├── update.py                  ← Phase 2 incremental updater
+│       ├── validate.py                ← SKILL.md schema validator (artifact-3 contract)
+│       ├── doctor.py                  ← Pre-flight repo check (skill-gen doctor)
 │       └── README.md                  ← Internal module docs
 │
 ├── skills/                            ← Reference skills (the quality bar)
@@ -373,7 +375,7 @@ What's in v0.3 (now):
 - All four pipeline stages working end-to-end via emit/ingest
 - Phase 2 incremental updater (git-diff-based)
 - Crawler handles Java + XML + properties + YAML + SQL + shell
-- Python CLI with `crawl / plan-emit / plan-ingest / generate-emit / generate-ingest / link-emit / link-ingest / update-emit / update-ingest`
+- Python CLI with `crawl / plan-emit / plan-ingest / generate-emit / generate-ingest / link-emit / link-ingest / update-emit / update-ingest / validate / doctor`
 - **Zero outbound network calls; no API key required**
 - Verified end-to-end against FTGO microservices reference (under earlier API architecture; prompts unchanged)
 
