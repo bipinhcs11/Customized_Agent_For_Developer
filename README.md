@@ -287,7 +287,17 @@ Compare to the alternative without skills: a developer asks 5 feature questions 
 │       ├── generate.py                ← Stage 3 (per-domain emit / ingest)
 │       ├── link.py                    ← Stage 4 (emit_prompt / ingest_response)
 │       ├── update.py                  ← Phase 2 incremental updater
+│       ├── validate.py                ← SKILL.md schema validator (artifact-3 gate)
+│       ├── doctor.py                  ← Pre-flight diagnostic (skill-gen doctor)
 │       └── README.md                  ← Internal module docs
+│
+├── tests/                             ← Stdlib unittest smoke tests
+│   ├── test_crawler.py
+│   ├── test_plan.py
+│   ├── test_generate.py
+│   ├── test_link.py
+│   ├── test_validate.py
+│   └── test_doctor.py
 │
 ├── skills/                            ← Reference skills (the quality bar)
 │   ├── file-delivery/SKILL.md
@@ -314,6 +324,10 @@ Compare to the alternative without skills: a developer asks 5 feature questions 
 │       └── cross-domain-links.json
 │
 └── docs/
+    ├── agent-invocation-flow.md       ← IDE-side sequence diagram (developer UX)
+    ├── enterprise-agent-selection-guide.md  ← When to use Opus vs Sonnet vs Copilot
+    ├── release-readiness-checklist.md ← What must land before enterprise-wide rollout
+    ├── skill-gen-doctor.md            ← doctor command example and output guide
     └── design-history/                ← Design notes for contributors
         └── CODEX_REVIEW_PROMPT.md
 ```
@@ -373,7 +387,7 @@ What's in v0.3 (now):
 - All four pipeline stages working end-to-end via emit/ingest
 - Phase 2 incremental updater (git-diff-based)
 - Crawler handles Java + XML + properties + YAML + SQL + shell
-- Python CLI with `crawl / plan-emit / plan-ingest / generate-emit / generate-ingest / link-emit / link-ingest / update-emit / update-ingest`
+- Python CLI with `crawl / plan-emit / plan-ingest / generate-emit / generate-ingest / link-emit / link-ingest / update-emit / update-ingest / validate / doctor`
 - **Zero outbound network calls; no API key required**
 - Verified end-to-end against FTGO microservices reference (under earlier API architecture; prompts unchanged)
 
