@@ -1,23 +1,20 @@
 """
-Smoke tests for tools.skill_generator.update — pure-function layer.
+Smoke tests for tools.skill_generator.update (Phase 2 incremental updater).
 
-Covers:
-  - _bump_version — extracts version from frontmatter and returns (old, new);
-      handles missing version, multi-digit versions, version embedded anywhere
-      in the document.
-  - _domain_from_skill — reconstructs a minimal domain dict from an existing
-      SKILL.md; checks class extraction, XML/SQL/shell extraction, and id/name
-      assignment.
-  - _map_files_to_features — maps changed file paths to feature IDs by
-      matching basenames against filenames mentioned in each SKILL.md; handles
-      no-match, multi-feature, and a missing skills directory.
-  - _resolve_skills_dir — resolves the skills directory from a repo root;
-      prefers .github/skills over skills, returns None when neither exists.
+Covers pure functions that require no git access or outbound calls:
+  - _bump_version  — extracts and increments the frontmatter version field
+  - _domain_from_skill — reconstructs a minimal domain dict from an existing SKILL.md
+  - _map_files_to_features — basename-matches changed files against skill folders
+  - _resolve_skills_dir — resolves .github/skills or skills directory
+  - ingest_responses — version bump, date override, and disk write (commit=False)
 
-All tests use stdlib only (tempfile, pathlib, unittest).
+All tests use stdlib only (tempfile, pathlib, datetime, unittest).
 """
+from __future__ import annotations
+
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 
 from tools.skill_generator.update import (
@@ -25,6 +22,7 @@ from tools.skill_generator.update import (
     _domain_from_skill,
     _map_files_to_features,
     _resolve_skills_dir,
+    ingest_responses,
 )
 
 
@@ -32,11 +30,14 @@ from tools.skill_generator.update import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_skill_md(version: int = 1, extra_body: str = "") -> str:
+def _make_skill(domain_id: str = "test-feature", version: int = 1) -> str:
+    """Minimal but structurally complete SKILL.md for test fixtures."""
+    title = domain_id.replace("-", " ").title()
+    cls = domain_id.title().replace("-", "")
     return f"""\
 ---
-skill: File Delivery
-domain: file-delivery
+skill: {title}
+domain: {domain_id}
 version: {version}
 project_type: REST API
 framework: Spring Boot
@@ -46,24 +47,64 @@ status: active
 flags: none
 related_skills: none
 generated_by: skill_generator.agent
-last_updated: 2026-01-01
+last_updated: 2025-01-01
 ---
 
+# {title}
+
 ## Purpose
-Handles file transfers.
+Handles {domain_id}. {cls}Service.java {cls}Controller.java
+
+## Entry Points
+- REST: GET /api/{domain_id} → {cls}Controller.get()
+
+## Business Logic
+
+### Core Flow
+1. Receive — {cls}Controller.get()
+2. Process — {cls}Service.process()
+
+### Validation Rules
+- Non-null — {cls}Service.validate()
+
+### Business Rules
+- Returns 200 — {cls}Service.process()
 
 ## Key Classes & Files
 | File | Type | Role |
 |------|------|------|
-| FileDeliveryService.java | Service | core logic |
-| FileDeliveryController.java | Controller | REST entry point |
+| {cls}Service.java | Service | core logic |
+
+## Data Flow
+```
+GET /api/{domain_id}
+   |
+   v
+{cls}Service.process()
+```
 
 ## Database & Storage
-- Schema: schema-init.sql
+- Tables: {domain_id.replace("-", "_")}
+
+## External Dependencies
+none found
+
+## Error Handling
+| Exception | Trigger | Handling |
+|-----------|---------|---------|
+| RuntimeException | failure | 500 |
+
+## Edge Cases
+- Null handled — {cls}Service.validate()
+
+## Legacy Notes
+none found
 
 ## Related Skills
 none found
-{extra_body}
+
+## AI Agent Instructions
+1. Always validate — {cls}Service.validate()
 """
 
 
@@ -72,43 +113,54 @@ none found
 # ---------------------------------------------------------------------------
 
 class TestBumpVersion(unittest.TestCase):
-    def test_version_1_bumps_to_2(self):
-        md = _make_skill_md(version=1)
+    def test_normal_version_bumped(self):
+        md = "---\nversion: 5\ndomain: foo\n---\n"
+        old, new = _bump_version(md)
+        self.assertEqual(old, 5)
+        self.assertEqual(new, 6)
+
+    def test_version_one_bumped_to_two(self):
+        md = "---\nversion: 1\n---\n"
         old, new = _bump_version(md)
         self.assertEqual(old, 1)
         self.assertEqual(new, 2)
 
-    def test_version_3_bumps_to_4(self):
-        md = _make_skill_md(version=3)
+    def test_no_space_after_colon_matched(self):
+        md = "---\nversion:3\ndomain: bar\n---\n"
         old, new = _bump_version(md)
         self.assertEqual(old, 3)
         self.assertEqual(new, 4)
 
-    def test_multi_digit_version_bumped_correctly(self):
-        md = _make_skill_md(version=99)
+    def test_version_not_at_line_start_not_matched(self):
+        # ^ in MULTILINE means line start; an indented version: should not match.
+        md = "  version: 9\n"
         old, new = _bump_version(md)
-        self.assertEqual(old, 99)
-        self.assertEqual(new, 100)
+        # Falls back to default of 1 → 2
+        self.assertEqual(old, 1)
+        self.assertEqual(new, 2)
 
-    def test_missing_version_defaults_to_1(self):
-        # A SKILL.md with no version line should default old_version = 1.
-        md = "---\nskill: Foo\ndomain: foo\n---\n\n## Purpose\nnone found\n"
+    def test_no_version_field_defaults_to_one(self):
+        md = "---\ndomain: foo\nstatus: active\n---\n"
         old, new = _bump_version(md)
         self.assertEqual(old, 1)
         self.assertEqual(new, 2)
 
-    def test_version_with_leading_whitespace(self):
-        # The regex uses MULTILINE so any line starting with version: must match.
-        md = "---\n  version: 5\n---\n"
-        # MULTILINE anchors to line-starts — leading spaces would not match ^version.
-        # This test documents the current behaviour: only "^version:" (no indent) matches.
+    def test_large_version_number(self):
+        md = "version: 99\n"
         old, new = _bump_version(md)
-        # With leading spaces the regex does NOT match, so it defaults to 1.
-        self.assertEqual(new, old + 1)
+        self.assertEqual(old, 99)
+        self.assertEqual(new, 100)
 
-    def test_old_plus_one_always_equals_new(self):
+    def test_first_version_field_used_when_multiple(self):
+        # re.search finds the first occurrence.
+        md = "version: 3\nversion: 7\n"
+        old, new = _bump_version(md)
+        self.assertEqual(old, 3)
+        self.assertEqual(new, 4)
+
+    def test_new_always_equals_old_plus_one(self):
         for v in (1, 2, 10, 42):
-            md = _make_skill_md(version=v)
+            md = f"version: {v}\n"
             old, new = _bump_version(md)
             self.assertEqual(new, old + 1, f"version {v}: new should be old+1")
 
@@ -119,177 +171,152 @@ class TestBumpVersion(unittest.TestCase):
 
 class TestDomainFromSkill(unittest.TestCase):
     def test_id_and_name_set_to_feature_id(self):
-        domain = _domain_from_skill("anything", "file-delivery")
-        self.assertEqual(domain["id"], "file-delivery")
-        self.assertEqual(domain["name"], "file-delivery")
+        d = _domain_from_skill("# nothing", "my-feature")
+        self.assertEqual(d["id"], "my-feature")
+        self.assertEqual(d["name"], "my-feature")
 
-    def test_description_always_empty(self):
-        domain = _domain_from_skill("anything", "foo")
-        self.assertEqual(domain["description"], "")
+    def test_description_empty(self):
+        d = _domain_from_skill("no content", "x")
+        self.assertEqual(d["description"], "")
 
     def test_java_class_extracted(self):
-        md = "| FileDeliveryService.java | Service | core logic |\n"
-        domain = _domain_from_skill(md, "file-delivery")
-        self.assertIn("FileDeliveryService", domain["classes"])
+        md = "Key file: FileDeliveryService.java"
+        d = _domain_from_skill(md, "file-delivery")
+        self.assertIn("FileDeliveryService", d["classes"])
 
     def test_multiple_java_classes_extracted(self):
-        md = (
-            "| FileDeliveryService.java | Service | core |\n"
-            "| FileDeliveryController.java | Controller | REST |\n"
-            "| FileDeliveryDao.java | DAO | DB |\n"
-        )
-        domain = _domain_from_skill(md, "fd")
-        names = set(domain["classes"])
-        self.assertIn("FileDeliveryService", names)
-        self.assertIn("FileDeliveryController", names)
-        self.assertIn("FileDeliveryDao", names)
+        md = "FileDeliveryService.java and FileDeliveryController.java"
+        d = _domain_from_skill(md, "file-delivery")
+        self.assertIn("FileDeliveryService", d["classes"])
+        self.assertIn("FileDeliveryController", d["classes"])
 
-    def test_lowercase_java_file_not_extracted(self):
-        # The regex requires an uppercase first letter: [A-Z][A-Za-z0-9]+\.java
-        md = "helper.java and AnotherClass.java mentioned here\n"
-        domain = _domain_from_skill(md, "x")
-        self.assertIn("AnotherClass", domain["classes"])
-        self.assertNotIn("helper", domain["classes"])
+    def test_lowercase_class_not_extracted(self):
+        # Regex requires uppercase first letter: [A-Z][A-Za-z0-9]+
+        md = "helper.java is a utility"
+        d = _domain_from_skill(md, "x")
+        self.assertNotIn("helper", d["classes"])
 
     def test_java_classes_deduplicated(self):
-        md = (
-            "| FileDeliveryService.java | Service | logic |\n"
-            "| FileDeliveryService.java | Service | (again) |\n"
-        )
-        domain = _domain_from_skill(md, "fd")
-        self.assertEqual(domain["classes"].count("FileDeliveryService"), 1)
+        md = "FileDeliveryService.java and FileDeliveryService.java again"
+        d = _domain_from_skill(md, "fd")
+        self.assertEqual(d["classes"].count("FileDeliveryService"), 1)
 
-    def test_xml_file_added_to_xml_sources(self):
-        md = "See beans.xml for Spring configuration.\n"
-        domain = _domain_from_skill(md, "fd")
-        xml_sources = domain["xmlSources"]
-        self.assertTrue(
-            any("beans.xml" in s for s in xml_sources),
-            f"beans.xml not found in xmlSources: {xml_sources}",
-        )
+    def test_xml_file_extracted(self):
+        md = "Uses applicationContext.xml for bean wiring."
+        d = _domain_from_skill(md, "x")
+        sources = " ".join(d["xmlSources"])
+        self.assertIn("applicationContext.xml", sources)
 
-    def test_sql_file_added_to_sql_sources(self):
-        md = "Schema defined in schema-init.sql and seed-data.sql.\n"
-        domain = _domain_from_skill(md, "fd")
-        sql_sources = domain["sqlSources"]
-        self.assertTrue(any("schema-init.sql" in s for s in sql_sources))
-        self.assertTrue(any("seed-data.sql" in s for s in sql_sources))
+    def test_sql_file_extracted(self):
+        md = "Schema defined in V1__create_table.sql"
+        d = _domain_from_skill(md, "x")
+        sources = " ".join(d["sqlSources"])
+        self.assertIn("V1__create_table.sql", sources)
 
-    def test_shell_file_added_to_shell_sources(self):
-        md = "Deployed by deploy.sh and rollback.sh scripts.\n"
-        domain = _domain_from_skill(md, "fd")
-        sh_sources = domain["shellSources"]
-        self.assertTrue(any("deploy.sh" in s for s in sh_sources))
-        self.assertTrue(any("rollback.sh" in s for s in sh_sources))
+    def test_shell_file_extracted(self):
+        md = "Orchestrated by deploy.sh"
+        d = _domain_from_skill(md, "x")
+        sources = " ".join(d["shellSources"])
+        self.assertIn("deploy.sh", sources)
 
-    def test_no_files_yields_empty_lists(self):
-        md = "No files referenced at all.\n"
-        domain = _domain_from_skill(md, "empty")
-        self.assertEqual(domain["classes"], [])
-        self.assertEqual(domain["xmlSources"], [])
-        self.assertEqual(domain["sqlSources"], [])
-        self.assertEqual(domain["shellSources"], [])
+    def test_empty_skill_md_returns_empty_lists(self):
+        d = _domain_from_skill("", "empty")
+        self.assertEqual(d["classes"], [])
+        self.assertEqual(d["xmlSources"], [])
+        self.assertEqual(d["sqlSources"], [])
+        self.assertEqual(d["shellSources"], [])
 
-    def test_xml_source_annotation_appended(self):
-        # Each XML entry should have ": from prior skill" appended.
-        md = "spring-context.xml referenced here.\n"
-        domain = _domain_from_skill(md, "fd")
-        self.assertTrue(
-            any(s.endswith(": from prior skill") for s in domain["xmlSources"]),
-            "XML sources should end with ': from prior skill'",
-        )
+    def test_xml_sources_have_prior_skill_annotation(self):
+        md = "beans.xml is used"
+        d = _domain_from_skill(md, "x")
+        self.assertTrue(any("from prior skill" in s for s in d["xmlSources"]))
 
 
 # ---------------------------------------------------------------------------
 # _map_files_to_features
 # ---------------------------------------------------------------------------
 
+def _write_skill(skills_dir: Path, feature_id: str, content: str) -> Path:
+    skill_path = skills_dir / feature_id / "SKILL.md"
+    skill_path.parent.mkdir(parents=True, exist_ok=True)
+    skill_path.write_text(content, encoding="utf-8")
+    return skill_path
+
+
 class TestMapFilesToFeatures(unittest.TestCase):
-    def _write_skill(self, skills_dir: Path, feature_id: str, content: str) -> None:
-        d = skills_dir / feature_id
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "SKILL.md").write_text(content, encoding="utf-8")
-
-    def test_missing_skills_dir_returns_empty(self):
-        result = _map_files_to_features(
-            ["src/FooService.java"],
-            Path("/does/not/exist/skills"),
-        )
-        self.assertEqual(result, {})
-
-    def test_changed_file_matched_to_feature(self):
+    def test_matching_file_mapped_to_feature(self):
         with tempfile.TemporaryDirectory() as td:
             skills_dir = Path(td) / "skills"
-            self._write_skill(skills_dir, "file-delivery", _make_skill_md())
+            _write_skill(skills_dir, "file-delivery",
+                         "FileDeliveryService.java handles delivery")
             result = _map_files_to_features(
-                ["src/main/java/FileDeliveryService.java"],
-                skills_dir,
+                ["src/main/java/FileDeliveryService.java"], skills_dir
             )
             self.assertIn("file-delivery", result)
             self.assertIn("src/main/java/FileDeliveryService.java",
                           result["file-delivery"])
 
-    def test_unmatched_file_absent_from_result(self):
+    def test_non_matching_file_not_in_result(self):
         with tempfile.TemporaryDirectory() as td:
             skills_dir = Path(td) / "skills"
-            self._write_skill(skills_dir, "file-delivery", _make_skill_md())
+            _write_skill(skills_dir, "file-delivery",
+                         "FileDeliveryService.java handles delivery")
             result = _map_files_to_features(
-                ["src/UnrelatedBean.java"],
-                skills_dir,
+                ["src/UnrelatedClass.java"], skills_dir
             )
-            self.assertNotIn("file-delivery", result)
-
-    def test_multiple_changed_files_same_feature(self):
-        with tempfile.TemporaryDirectory() as td:
-            skills_dir = Path(td) / "skills"
-            self._write_skill(skills_dir, "file-delivery", _make_skill_md())
-            result = _map_files_to_features(
-                [
-                    "src/FileDeliveryService.java",
-                    "src/FileDeliveryController.java",
-                ],
-                skills_dir,
-            )
-            self.assertEqual(len(result["file-delivery"]), 2)
-
-    def test_file_matched_to_correct_feature_among_many(self):
-        with tempfile.TemporaryDirectory() as td:
-            skills_dir = Path(td) / "skills"
-            fd_md = _make_skill_md() + "| FileDeliveryDao.java | DAO | DB |\n"
-            ic_md = (
-                "---\nskill: Invoice\ndomain: invoice-compare\nversion: 1\n"
-                "project_type: REST API\nframework: Spring Boot\njava_version: 17\n"
-                "legacy: false\nstatus: active\nflags: none\nrelated_skills: none\n"
-                "generated_by: agent\nlast_updated: 2026-01-01\n---\n\n"
-                "| InvoiceCompareService.java | Service | compare invoices |\n"
-            )
-            self._write_skill(skills_dir, "file-delivery", fd_md)
-            self._write_skill(skills_dir, "invoice-compare", ic_md)
-            result = _map_files_to_features(
-                ["com/example/InvoiceCompareService.java"],
-                skills_dir,
-            )
-            self.assertIn("invoice-compare", result)
             self.assertNotIn("file-delivery", result)
 
     def test_empty_changed_files_returns_empty(self):
         with tempfile.TemporaryDirectory() as td:
             skills_dir = Path(td) / "skills"
-            self._write_skill(skills_dir, "file-delivery", _make_skill_md())
+            _write_skill(skills_dir, "file-delivery", "FileDeliveryService.java")
             result = _map_files_to_features([], skills_dir)
             self.assertEqual(result, {})
 
-    def test_properties_file_matched(self):
-        md = (
-            _make_skill_md()
-            + "\nConfig: application.properties drives this feature.\n"
-        )
+    def test_file_shared_by_two_features_mapped_to_both(self):
         with tempfile.TemporaryDirectory() as td:
             skills_dir = Path(td) / "skills"
-            self._write_skill(skills_dir, "file-delivery", md)
+            _write_skill(skills_dir, "feature-a", "SharedUtils.java does A")
+            _write_skill(skills_dir, "feature-b", "SharedUtils.java does B")
+            result = _map_files_to_features(["src/SharedUtils.java"], skills_dir)
+            self.assertIn("feature-a", result)
+            self.assertIn("feature-b", result)
+
+    def test_nonexistent_skills_dir_returns_empty(self):
+        result = _map_files_to_features(
+            ["src/Foo.java"], Path("/nonexistent/skills/dir/that/never/exists")
+        )
+        self.assertEqual(result, {})
+
+    def test_multiple_changed_files_multiple_features(self):
+        with tempfile.TemporaryDirectory() as td:
+            skills_dir = Path(td) / "skills"
+            _write_skill(skills_dir, "invoicing", "InvoiceService.java")
+            _write_skill(skills_dir, "payments", "PaymentService.java")
             result = _map_files_to_features(
-                ["src/main/resources/application.properties"],
+                ["src/InvoiceService.java", "src/PaymentService.java"], skills_dir
+            )
+            self.assertIn("invoicing", result)
+            self.assertIn("payments", result)
+
+    def test_multiple_files_same_feature(self):
+        with tempfile.TemporaryDirectory() as td:
+            skills_dir = Path(td) / "skills"
+            md = "FileDeliveryService.java and FileDeliveryController.java"
+            _write_skill(skills_dir, "file-delivery", md)
+            result = _map_files_to_features(
+                ["src/FileDeliveryService.java", "src/FileDeliveryController.java"],
                 skills_dir,
+            )
+            self.assertEqual(len(result["file-delivery"]), 2)
+
+    def test_properties_file_matched(self):
+        with tempfile.TemporaryDirectory() as td:
+            skills_dir = Path(td) / "skills"
+            _write_skill(skills_dir, "file-delivery",
+                         "Config: application.properties drives this feature.")
+            result = _map_files_to_features(
+                ["src/main/resources/application.properties"], skills_dir
             )
             self.assertIn("file-delivery", result)
 
@@ -316,8 +343,7 @@ class TestResolveSkillsDir(unittest.TestCase):
 
     def test_returns_none_when_neither_exists(self):
         with tempfile.TemporaryDirectory() as td:
-            repo = Path(td)
-            result = _resolve_skills_dir(repo)
+            result = _resolve_skills_dir(Path(td))
             self.assertIsNone(result)
 
     def test_github_skills_only(self):
@@ -326,6 +352,120 @@ class TestResolveSkillsDir(unittest.TestCase):
             (repo / ".github" / "skills").mkdir(parents=True)
             result = _resolve_skills_dir(repo)
             self.assertEqual(result, repo / ".github" / "skills")
+
+
+# ---------------------------------------------------------------------------
+# ingest_responses (commit=False — no git required)
+# ---------------------------------------------------------------------------
+
+def _setup_repo(tmpdir: str, feature_id: str, version: int,
+                response_content: str) -> tuple:
+    """Create a minimal repo tree; return (repo_root, responses_dir)."""
+    repo = Path(tmpdir)
+    skill_path = repo / ".github" / "skills" / feature_id / "SKILL.md"
+    skill_path.parent.mkdir(parents=True)
+    skill_path.write_text(_make_skill(feature_id, version=version), encoding="utf-8")
+
+    responses_dir = repo / ".skill-gen" / ".update-responses"
+    responses_dir.mkdir(parents=True)
+    (responses_dir / f"{feature_id}.md").write_text(response_content, encoding="utf-8")
+    return repo, responses_dir
+
+
+class TestIngestResponses(unittest.TestCase):
+    def test_version_bumped_in_written_skill(self):
+        with tempfile.TemporaryDirectory() as td:
+            feature = "file-delivery"
+            response = _make_skill(feature, version=4)
+            repo, rdir = _setup_repo(td, feature, version=3, response_content=response)
+            result = ingest_responses(repo, responses_dir=rdir,
+                                      commit=False, validate_schema=False)
+            self.assertEqual(len(result.get("updated", [])), 1)
+            written = (Path(td) / ".github" / "skills" / feature / "SKILL.md"
+                       ).read_text(encoding="utf-8")
+            self.assertIn("version: 4", written)
+
+    def test_ingest_forces_correct_version_when_ai_skipped_bump(self):
+        """If AI returned version: 3 (forgot to bump from 3), ingest must write 4."""
+        with tempfile.TemporaryDirectory() as td:
+            feature = "invoice-compare"
+            response = _make_skill(feature, version=3)  # AI forgot to bump
+            repo, rdir = _setup_repo(td, feature, version=3, response_content=response)
+            result = ingest_responses(repo, responses_dir=rdir,
+                                      commit=False, validate_schema=False)
+            self.assertEqual(len(result.get("updated", [])), 1)
+            written = (Path(td) / ".github" / "skills" / feature / "SKILL.md"
+                       ).read_text(encoding="utf-8")
+            self.assertIn("version: 4", written)
+
+    def test_last_updated_set_to_today(self):
+        with tempfile.TemporaryDirectory() as td:
+            feature = "payment-method"
+            response = _make_skill(feature, version=2)
+            repo, rdir = _setup_repo(td, feature, version=1, response_content=response)
+            ingest_responses(repo, responses_dir=rdir,
+                             commit=False, validate_schema=False)
+            written = (Path(td) / ".github" / "skills" / feature / "SKILL.md"
+                       ).read_text(encoding="utf-8")
+            today = date.today().isoformat()
+            self.assertIn(f"last_updated: {today}", written)
+
+    def test_missing_response_file_reported_as_failed(self):
+        with tempfile.TemporaryDirectory() as td:
+            feature = "missing-feature"
+            repo = Path(td)
+            skill_path = repo / ".github" / "skills" / feature / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text(_make_skill(feature, version=1), encoding="utf-8")
+            rdir = repo / ".skill-gen" / ".update-responses"
+            rdir.mkdir(parents=True)
+            # No response file written for this feature
+            result = ingest_responses(repo, responses_dir=rdir,
+                                      commit=False, feature=feature,
+                                      validate_schema=False)
+            failed_ids = [f.get("feature") for f in result.get("failed", [])]
+            self.assertIn(feature, failed_ids)
+
+    def test_empty_response_reported_as_failed(self):
+        with tempfile.TemporaryDirectory() as td:
+            feature = "empty-response"
+            repo, rdir = _setup_repo(td, feature, version=1,
+                                     response_content="   \n  ")
+            result = ingest_responses(repo, responses_dir=rdir,
+                                      commit=False, validate_schema=False)
+            failed_ids = [f.get("feature") for f in result.get("failed", [])]
+            self.assertIn(feature, failed_ids)
+
+    def test_missing_skill_md_reported_as_failed(self):
+        with tempfile.TemporaryDirectory() as td:
+            feature = "no-skill"
+            repo = Path(td)
+            (repo / ".github" / "skills").mkdir(parents=True)
+            rdir = repo / ".skill-gen" / ".update-responses"
+            rdir.mkdir(parents=True)
+            (rdir / f"{feature}.md").write_text(_make_skill(feature), encoding="utf-8")
+            result = ingest_responses(repo, responses_dir=rdir,
+                                      commit=False, feature=feature,
+                                      validate_schema=False)
+            failed_ids = [f.get("feature") for f in result.get("failed", [])]
+            self.assertIn(feature, failed_ids)
+
+    def test_no_skills_dir_returns_early(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            result = ingest_responses(repo, commit=False, validate_schema=False)
+            self.assertIn("reason", result)
+
+    def test_fenced_response_content_unwrapped(self):
+        """Responses wrapped in ```markdown fences are correctly stripped."""
+        with tempfile.TemporaryDirectory() as td:
+            feature = "file-delivery"
+            raw_skill = _make_skill(feature, version=2)
+            fenced = f"```markdown\n{raw_skill}\n```"
+            repo, rdir = _setup_repo(td, feature, version=1, response_content=fenced)
+            result = ingest_responses(repo, responses_dir=rdir,
+                                      commit=False, validate_schema=False)
+            self.assertEqual(len(result.get("updated", [])), 1)
 
 
 if __name__ == "__main__":
