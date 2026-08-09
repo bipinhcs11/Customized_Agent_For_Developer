@@ -530,8 +530,9 @@ def parse_xml_file(path: Path, repo_root: Path) -> tuple:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _extract_properties_prefixes(text: str) -> list:
-    """Return distinct prefix keys (everything before the first dot or =) that
-    match CONFIG_PREFIXES_OF_INTEREST or look meaningful."""
+    """Return distinct key prefixes (up to two dot-segments) from a .properties
+    file.  Comments (`#`, `!`) and blank lines are skipped.  Both `=` and `:`
+    separators are handled.  The returned list preserves insertion order."""
     seen = []
     for line in text.splitlines():
         line = line.strip()
@@ -546,7 +547,6 @@ def _extract_properties_prefixes(text: str) -> list:
             continue
         if not key:
             continue
-        top = key.split(".", 1)[0]
         prefix_full = ".".join(key.split(".")[:2]) if "." in key else key
         if prefix_full not in seen:
             seen.append(prefix_full)
