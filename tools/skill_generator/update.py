@@ -49,7 +49,18 @@ def _git_changed_files(repo_root: Path, base: str = "HEAD~1", head: str = "HEAD"
         ["git", "-C", str(repo_root), "status", "--porcelain"],
         capture_output=True, text=True, check=False,
     )
-    return [l[3:].strip() for l in out.stdout.splitlines() if l.strip()]
+    files = []
+    for line in out.stdout.splitlines():
+        if not line.strip():
+            continue
+        entry = line[3:]  # strip XY status code + space
+        # Renames/copies appear as "ORIG -> DEST"; keep only the destination.
+        if " -> " in entry:
+            entry = entry.split(" -> ", 1)[1]
+        entry = entry.strip()
+        if entry:
+            files.append(entry)
+    return files
 
 
 def _map_files_to_features(changed_files: list, skills_dir: Path) -> dict:
