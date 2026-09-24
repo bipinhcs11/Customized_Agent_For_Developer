@@ -116,6 +116,8 @@ def _invert_link_type(t: str) -> str:
 
 def _apply_links(text: str, links: list) -> str:
     """Update frontmatter `related_skills:` and the body Related Skills table."""
+    if not links:
+        return text
     targets = [ln["to"] for ln in links]
     joined = ", ".join(sorted(set(targets)))
     text = re.sub(

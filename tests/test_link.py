@@ -278,9 +278,9 @@ class TestApplyLinksRelatedSkillsTable(unittest.TestCase):
     def test_no_change_when_no_links(self):
         text = _make_skill("file-delivery")
         result = _apply_links(text, [])
-        # With no links, only the frontmatter replacement matters; content should
-        # remain structurally intact.
-        self.assertIn("## AI Agent Instructions", result)
+        self.assertEqual(result, text,
+                         "_apply_links with empty links must return text unchanged "
+                         "(no empty related_skills: value, no empty table rows)")
 
 
 # ---------------------------------------------------------------------------
