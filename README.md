@@ -287,13 +287,25 @@ Compare to the alternative without skills: a developer asks 5 feature questions 
 │       ├── generate.py                ← Stage 3 (per-domain emit / ingest)
 │       ├── link.py                    ← Stage 4 (emit_prompt / ingest_response)
 │       ├── update.py                  ← Phase 2 incremental updater
+│       ├── validate.py                ← artifact-3 schema validator (gates all ingest stages)
+│       ├── doctor.py                  ← pre-flight repo inspector (no AI turns)
 │       └── README.md                  ← Internal module docs
+│
+├── tests/                             ← stdlib unittest smoke tests
+│   ├── test_crawler.py
+│   ├── test_doctor.py
+│   ├── test_generate.py
+│   ├── test_link.py
+│   ├── test_plan.py
+│   ├── test_update.py
+│   └── test_validate.py
 │
 ├── skills/                            ← Reference skills (the quality bar)
 │   ├── file-delivery/SKILL.md
 │   ├── invoice-compare/SKILL.md
 │   ├── payment-method-determination/SKILL.md
 │   └── skill-generator/
+│       ├── SKILL.md                   ← IDE-invocable skill for running the pipeline
 │       └── references/
 │           └── data-flow-example.md   ← Pattern for the rich Data Flow section
 │
@@ -314,7 +326,11 @@ Compare to the alternative without skills: a developer asks 5 feature questions 
 │       └── cross-domain-links.json
 │
 └── docs/
-    └── design-history/                ← Design notes for contributors
+    ├── skill-gen-doctor.md            ← doctor command example output
+    ├── agent-invocation-flow.md       ← sequence diagram of the full developer flow
+    ├── enterprise-agent-selection-guide.md  ← when to use Opus vs Sonnet vs Copilot
+    ├── release-readiness-checklist.md ← what must land before unsupervised rollout
+    └── design-history/                ← design notes for contributors
         └── CODEX_REVIEW_PROMPT.md
 ```
 
