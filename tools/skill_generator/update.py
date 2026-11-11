@@ -40,11 +40,10 @@ def _git_changed_files(repo_root: Path, base: str = "HEAD~1", head: str = "HEAD"
             ["git", "-C", str(repo_root), "diff", "--name-only", f"{base}..{head}"],
             capture_output=True, text=True, check=True,
         )
-        files = [l.strip() for l in out.stdout.splitlines() if l.strip()]
-        if files:
-            return files
+        return [l.strip() for l in out.stdout.splitlines() if l.strip()]
     except subprocess.CalledProcessError:
         pass
+    # Fallback: shallow clone or missing base ref — use working-tree state instead.
     out = subprocess.run(
         ["git", "-C", str(repo_root), "status", "--porcelain"],
         capture_output=True, text=True, check=False,
