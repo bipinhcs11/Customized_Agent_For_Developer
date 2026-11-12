@@ -8,7 +8,15 @@ Covers:
     "FooService", silently producing empty source blobs.
   - _strip_markdown_fence (used by both generate-ingest and update-ingest)
   - _build_prompt (template substitution)
+  - emit_prompts — Stage 3 public API: writes one prompt per domain from
+    plan.json + index.json + source files; respects only_domains filter
+  - ingest_responses — Stage 3 public API: reads per-domain response files,
+    writes SKILL.mds; handles missing/empty responses, existing-file skip,
+    force_regen override, only_domains filter, fenced content stripping
+
+All tests use stdlib only (json, tempfile, pathlib, unittest).
 """
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,6 +29,8 @@ from tools.skill_generator.generate import (
     _extract_matching_properties_pairs,
     _extract_matching_yaml_pairs,
     _prefix_overlaps,
+    emit_prompts,
+    ingest_responses,
 )
 
 
@@ -396,6 +406,376 @@ class TestCollectSourceBlobIncludesConfig(unittest.TestCase):
             self.assertIn("FooService", blob)
             self.assertIn("--- CONFIG: application.yml ---", blob)
             self.assertIn("app.foo.enabled: true", blob)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public API: emit_prompts and ingest_responses
+# ─────────────────────────────────────────────────────────────────────────────
+
+_MINIMAL_PLAN = {
+    "projectType": "REST API",
+    "framework": "Spring Boot",
+    "buildSystem": "Maven",
+    "javaVersion": "17",
+    "warnings": [],
+    "domains": [
+        {
+            "id": "file-delivery",
+            "name": "File Delivery",
+            "description": "Handles file transfers",
+            "classes": ["FileDeliveryService"],
+            "xmlSources": [],
+            "sqlSources": [],
+            "shellSources": [],
+            "configKeys": [],
+        }
+    ],
+}
+
+_MINIMAL_SKILL_MD = """\
+---
+skill: File Delivery
+domain: file-delivery
+version: 1
+project_type: REST API
+framework: Spring Boot
+java_version: 17
+legacy: false
+status: active
+flags: none
+related_skills: none
+generated_by: skill_generator.agent
+last_updated: 2026-11-12
+---
+
+# File Delivery
+
+## Purpose
+Handles file transfers.
+
+## Entry Points
+- REST: GET /api/files → FileDeliveryController.get()
+
+## Business Logic
+
+### Core Flow
+1. Receive — FileDeliveryController.get()
+2. Process — FileDeliveryService.deliver()
+
+### Validation Rules
+- Non-null — FileDeliveryService.validate()
+
+### Business Rules
+- Returns 200 — FileDeliveryService.deliver()
+
+## Key Classes & Files
+| File | Type | Role |
+|------|------|------|
+| FileDeliveryService.java | Service | core logic |
+
+## Data Flow
+GET /api/files → FileDeliveryService.deliver()
+
+## Database & Storage
+- Tables: file_delivery
+
+## External Dependencies
+none found
+
+## Error Handling
+| Exception | Trigger | Handling |
+|-----------|---------|---------|
+| RuntimeException | failure | 500 |
+
+## Edge Cases
+- Null handled — FileDeliveryService.validate()
+
+## Legacy Notes
+none found
+
+## Related Skills
+none found
+
+## AI Agent Instructions
+1. Always validate — FileDeliveryService.validate()
+"""
+
+
+def _write_plan(td: str, plan: dict) -> Path:
+    p = Path(td) / "plan.json"
+    p.write_text(json.dumps(plan), encoding="utf-8")
+    return p
+
+
+def _write_index(repo: Path, classes: list) -> Path:
+    idx = {
+        "java_classes": classes,
+        "xml_signals": [],
+        "config_signals": [],
+        "sql_signals": [],
+        "shell_signals": [],
+    }
+    index_path = repo / ".skill-gen" / ".index.json"
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    index_path.write_text(json.dumps(idx), encoding="utf-8")
+    return index_path
+
+
+def _write_java(repo: Path, rel: str, class_name: str) -> None:
+    p = repo / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(f"public class {class_name} {{ void work() {{}} }}", encoding="utf-8")
+
+
+class TestEmitPrompts(unittest.TestCase):
+    def _setup(self, td: str):
+        """Return (plan_path, repo, index_path) with one domain."""
+        repo = Path(td) / "repo"
+        repo.mkdir()
+        _write_java(repo, "src/FileDeliveryService.java", "FileDeliveryService")
+        index_path = _write_index(repo, [
+            {"class_name": "FileDeliveryService", "file_path": "src/FileDeliveryService.java"},
+        ])
+        plan_path = _write_plan(td, _MINIMAL_PLAN)
+        return plan_path, repo, index_path
+
+    def test_prompt_written_per_domain(self):
+        with tempfile.TemporaryDirectory() as td:
+            plan_path, repo, index_path = self._setup(td)
+            prompts_dir = Path(td) / "prompts"
+            result = emit_prompts(plan_path, repo, index_path=index_path,
+                                  prompts_dir=prompts_dir)
+            self.assertEqual(len(result["written"]), 1)
+            self.assertTrue((prompts_dir / "file-delivery.md").exists())
+
+    def test_prompt_contains_domain_name_and_id(self):
+        with tempfile.TemporaryDirectory() as td:
+            plan_path, repo, index_path = self._setup(td)
+            prompts_dir = Path(td) / "prompts"
+            emit_prompts(plan_path, repo, index_path=index_path, prompts_dir=prompts_dir)
+            text = (prompts_dir / "file-delivery.md").read_text(encoding="utf-8")
+            self.assertIn("file-delivery", text)
+            self.assertIn("File Delivery", text)
+
+    def test_prompt_contains_source_code(self):
+        with tempfile.TemporaryDirectory() as td:
+            plan_path, repo, index_path = self._setup(td)
+            prompts_dir = Path(td) / "prompts"
+            emit_prompts(plan_path, repo, index_path=index_path, prompts_dir=prompts_dir)
+            text = (prompts_dir / "file-delivery.md").read_text(encoding="utf-8")
+            self.assertIn("FileDeliveryService", text)
+
+    def test_domain_with_no_source_in_failed(self):
+        with tempfile.TemporaryDirectory() as td:
+            plan_path, repo, index_path = self._setup(td)
+            # Overwrite plan with a domain whose class has no matching index entry
+            plan = dict(_MINIMAL_PLAN)
+            plan["domains"] = [dict(_MINIMAL_PLAN["domains"][0],
+                                    classes=["GhostClass"])]
+            plan_path = _write_plan(td, plan)
+            prompts_dir = Path(td) / "prompts"
+            result = emit_prompts(plan_path, repo, index_path=index_path,
+                                  prompts_dir=prompts_dir)
+            self.assertEqual(result["written"], [])
+            self.assertTrue(any(f["domain"] == "file-delivery"
+                                for f in result["failed"]))
+
+    def test_only_domains_skips_other_domains(self):
+        with tempfile.TemporaryDirectory() as td:
+            # Plan with two domains, only one has source
+            _write_java(Path(td) / "repo" / "src2",
+                        "InvoiceService.java", "InvoiceService")
+            repo = Path(td) / "repo"
+            repo.mkdir(exist_ok=True)
+            _write_java(repo, "src/FileDeliveryService.java", "FileDeliveryService")
+            _write_java(repo, "src/InvoiceService.java", "InvoiceService")
+            index_path = _write_index(repo, [
+                {"class_name": "FileDeliveryService",
+                 "file_path": "src/FileDeliveryService.java"},
+                {"class_name": "InvoiceService",
+                 "file_path": "src/InvoiceService.java"},
+            ])
+            two_domain_plan = dict(_MINIMAL_PLAN)
+            two_domain_plan["domains"] = [
+                _MINIMAL_PLAN["domains"][0],
+                {"id": "invoice-compare", "name": "Invoice Compare",
+                 "description": "", "classes": ["InvoiceService"],
+                 "xmlSources": [], "sqlSources": [], "shellSources": [],
+                 "configKeys": []},
+            ]
+            plan_path = _write_plan(td, two_domain_plan)
+            prompts_dir = Path(td) / "prompts"
+            result = emit_prompts(plan_path, repo, index_path=index_path,
+                                  prompts_dir=prompts_dir,
+                                  only_domains=["file-delivery"])
+            written_names = [Path(p).stem for p in result["written"]]
+            self.assertIn("file-delivery", written_names)
+            self.assertNotIn("invoice-compare", written_names)
+
+    def test_result_has_written_skipped_failed_keys(self):
+        with tempfile.TemporaryDirectory() as td:
+            plan_path, repo, index_path = self._setup(td)
+            result = emit_prompts(plan_path, repo, index_path=index_path)
+            for key in ("written", "skipped", "failed"):
+                self.assertIn(key, result)
+
+
+class TestIngestResponses(unittest.TestCase):
+    def _setup(self, td: str):
+        """Return (plan_path, repo, responses_dir, output_dir)."""
+        repo = Path(td) / "repo"
+        repo.mkdir()
+        plan_path = _write_plan(td, _MINIMAL_PLAN)
+        responses_dir = Path(td) / "responses"
+        responses_dir.mkdir()
+        output_dir = Path(td) / "output"
+        return plan_path, repo, responses_dir, output_dir
+
+    def test_skill_md_written_on_happy_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            plan_path, repo, responses_dir, output_dir = self._setup(td)
+            (responses_dir / "file-delivery.md").write_text(
+                _MINIMAL_SKILL_MD, encoding="utf-8"
+            )
+            result = ingest_responses(
+                plan_path, repo,
+                responses_dir=responses_dir,
+                output_dir=output_dir,
+                validate_schema=False,
+            )
+            self.assertEqual(len(result["written"]), 1)
+            self.assertTrue((output_dir / "file-delivery" / "SKILL.md").exists())
+
+    def test_missing_response_in_failed(self):
+        with tempfile.TemporaryDirectory() as td:
+            plan_path, repo, responses_dir, output_dir = self._setup(td)
+            result = ingest_responses(
+                plan_path, repo,
+                responses_dir=responses_dir,
+                output_dir=output_dir,
+                validate_schema=False,
+            )
+            self.assertEqual(result["written"], [])
+            self.assertTrue(any(f["domain"] == "file-delivery"
+                                for f in result["failed"]))
+
+    def test_empty_response_in_failed(self):
+        with tempfile.TemporaryDirectory() as td:
+            plan_path, repo, responses_dir, output_dir = self._setup(td)
+            (responses_dir / "file-delivery.md").write_text("", encoding="utf-8")
+            result = ingest_responses(
+                plan_path, repo,
+                responses_dir=responses_dir,
+                output_dir=output_dir,
+                validate_schema=False,
+            )
+            failed_ids = [f["domain"] for f in result["failed"]]
+            self.assertIn("file-delivery", failed_ids)
+
+    def test_existing_skill_skipped_without_force(self):
+        with tempfile.TemporaryDirectory() as td:
+            plan_path, repo, responses_dir, output_dir = self._setup(td)
+            # Pre-create a SKILL.md so the ingest would need --force to overwrite
+            skill_path = output_dir / "file-delivery" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("existing content", encoding="utf-8")
+            (responses_dir / "file-delivery.md").write_text(
+                _MINIMAL_SKILL_MD, encoding="utf-8"
+            )
+            result = ingest_responses(
+                plan_path, repo,
+                responses_dir=responses_dir,
+                output_dir=output_dir,
+                validate_schema=False,
+                force_regen=False,
+            )
+            self.assertEqual(result["written"], [])
+            self.assertIn("file-delivery", result["skipped"])
+            # Original content preserved
+            self.assertEqual(skill_path.read_text(encoding="utf-8"), "existing content")
+
+    def test_force_regen_overwrites_existing(self):
+        with tempfile.TemporaryDirectory() as td:
+            plan_path, repo, responses_dir, output_dir = self._setup(td)
+            skill_path = output_dir / "file-delivery" / "SKILL.md"
+            skill_path.parent.mkdir(parents=True)
+            skill_path.write_text("old content", encoding="utf-8")
+            (responses_dir / "file-delivery.md").write_text(
+                _MINIMAL_SKILL_MD, encoding="utf-8"
+            )
+            result = ingest_responses(
+                plan_path, repo,
+                responses_dir=responses_dir,
+                output_dir=output_dir,
+                validate_schema=False,
+                force_regen=True,
+            )
+            self.assertEqual(len(result["written"]), 1)
+            self.assertNotEqual(skill_path.read_text(encoding="utf-8"), "old content")
+
+    def test_only_domains_processes_named_domain_only(self):
+        with tempfile.TemporaryDirectory() as td:
+            two_domain_plan = dict(_MINIMAL_PLAN)
+            two_domain_plan["domains"] = [
+                _MINIMAL_PLAN["domains"][0],
+                {"id": "invoice-compare", "name": "Invoice Compare",
+                 "description": "", "classes": [],
+                 "xmlSources": [], "sqlSources": [], "shellSources": [],
+                 "configKeys": []},
+            ]
+            plan_path = _write_plan(td, two_domain_plan)
+            repo = Path(td) / "repo"
+            repo.mkdir()
+            responses_dir = Path(td) / "responses"
+            responses_dir.mkdir()
+            output_dir = Path(td) / "output"
+            (responses_dir / "file-delivery.md").write_text(
+                _MINIMAL_SKILL_MD, encoding="utf-8"
+            )
+            (responses_dir / "invoice-compare.md").write_text(
+                _MINIMAL_SKILL_MD.replace("file-delivery", "invoice-compare")
+                .replace("File Delivery", "Invoice Compare"),
+                encoding="utf-8",
+            )
+            result = ingest_responses(
+                plan_path, repo,
+                responses_dir=responses_dir,
+                output_dir=output_dir,
+                validate_schema=False,
+                only_domains=["file-delivery"],
+            )
+            written_names = [Path(p).parent.name for p in result["written"]]
+            self.assertIn("file-delivery", written_names)
+            self.assertNotIn("invoice-compare", written_names)
+
+    def test_fenced_response_content_stripped(self):
+        with tempfile.TemporaryDirectory() as td:
+            plan_path, repo, responses_dir, output_dir = self._setup(td)
+            fenced = "```\n" + _MINIMAL_SKILL_MD + "\n```"
+            (responses_dir / "file-delivery.md").write_text(fenced, encoding="utf-8")
+            result = ingest_responses(
+                plan_path, repo,
+                responses_dir=responses_dir,
+                output_dir=output_dir,
+                validate_schema=False,
+            )
+            self.assertEqual(len(result["written"]), 1)
+            written = (output_dir / "file-delivery" / "SKILL.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertFalse(written.strip().startswith("```"))
+
+    def test_result_has_written_skipped_failed_keys(self):
+        with tempfile.TemporaryDirectory() as td:
+            plan_path, repo, responses_dir, output_dir = self._setup(td)
+            result = ingest_responses(
+                plan_path, repo,
+                responses_dir=responses_dir,
+                output_dir=output_dir,
+                validate_schema=False,
+            )
+            for key in ("written", "skipped", "failed"):
+                self.assertIn(key, result)
 
 
 if __name__ == "__main__":
